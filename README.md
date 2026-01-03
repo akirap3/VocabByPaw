@@ -1,11 +1,85 @@
-<div align="center">
+# 🐱 Sir Isaac's Vocab Studio
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+**Sir Isaac's Vocab Studio** is a creative, AI-powered vocabulary learning tool designed to make studying new words visually engaging and fun. Guided by "Sir Isaac" (a chubby orange tabby cat), users can generate vocabulary lists based on topics, create whimsical watercolor illustrations for each word, and arrange them into beautiful study cards or collages.
 
-  <h1>Built with AI Studio</h2>
+Powered by **Google Gemini 2.5 Flash** and **Gemini 3 Preview**.
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+## ✨ Features
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+### 🧠 AI Vocabulary Generation
+*   **Topic-Based Generation**: Enter a theme (e.g., "Space Exploration", "Cooking") and select proficiency levels (A1-C2, TOEIC, etc.) to generate a curated list of words.
+*   **Manual Input**: Input specific words to get detailed definitions, KK phonetics, and example sentences in English and the target language.
+*   **Contextual Learning**: Every word comes with a definition and bilingual example sentences.
 
-</div>
+### 🎨 AI Image Studio
+*   **Auto-Generation**: Automatically generates "Soft watercolor and ink" style illustrations for every vocabulary word using **Gemini 2.5 Flash Image**.
+*   **Magic Editor**: Use natural language prompts to edit existing images (e.g., "Add a party hat", "Make it snowy").
+*   **Drag & Drop Grid**: Arrange your cards in various layouts (Single, Split, Grid 4, Grid 9, Focus views).
+
+### 🛠️ Customization & Export
+*   **Smart Layouts**: Toggle between text overlays, definitions, and sentences on the cards.
+*   **Collage Stitching**: Stitch your grid layout into a single high-resolution PNG for download.
+*   **Divider Customization**: Add dashed, dotted, or solid lines to your collages with custom colors.
+
+## 🚀 Tech Stack
+
+*   **Frontend**: React 19, TypeScript
+*   **Styling**: Tailwind CSS
+*   **AI Integration**: Google GenAI SDK (`@google/genai`)
+*   **Icons**: Lucide React
+*   **Font**: Comic Neue & Noto Sans TC
+
+## 🛠️ Getting Started
+
+### Prerequisites
+*   Node.js (v18 or higher recommended)
+*   A Google Cloud Project with the **Gemini API** enabled.
+*   An API Key from [Google AI Studio](https://aistudio.google.com/).
+
+### Installation
+
+1.  **Clone the repository**
+    ```bash
+    git clone https://github.com/your-username/sir-isaacs-vocab-studio.git
+    cd sir-isaacs-vocab-studio
+    ```
+
+2.  **Install dependencies**
+    ```bash
+    npm install
+    # or
+    yarn install
+    ```
+
+3.  **Configure Environment Variables**
+    Create a `.env` file in the root directory and add your Google Gemini API Key:
+    
+    ```env
+    API_KEY=your_actual_api_key_here
+    ```
+    
+    > **Note**: The application uses `process.env.API_KEY`. Ensure your build tool (Webpack/Vite/Parcel) supports environment variable injection.
+
+4.  **Run the application**
+    ```bash
+    npm start
+    ```
+
+## 📖 Usage
+
+1.  **Setup Panel**: Open the left panel (click the "Nap Mode/Studio Open" toggle on desktop).
+2.  **Generate Words**: Choose a topic or enter manual words. Select your target language.
+3.  **Select Layout**: Use the top bar to choose a grid layout (e.g., 4-grid).
+4.  **Assign Words**: Click a box in the grid, then select a word from the generated list on the left.
+5.  **Generate Images**: Click "Generate" on the grid cell to create an AI illustration.
+6.  **Export**: Click "Stitch & Download Collage" at the bottom to save your creation.
+
+## 🔒 Security Note
+
+This project uses the API Key on the client-side (frontend). 
+*   **For Development**: Using `.env` is fine.
+*   **For Production**: It is highly recommended to set up **HTTP Referrer restrictions** on your API Key in the Google Cloud Console to prevent unauthorized usage if you deploy this to a public URL.
+
+## 📄 License
+
+This project is open source.
