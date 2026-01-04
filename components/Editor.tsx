@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { VocabItem } from '../types';
 import { generateImageContent } from '../services/geminiService';
-import { Camera, RefreshCw, Wand2, Download, Eye, EyeOff, Layers, X, Image as ImageIcon, Upload, CheckCircle2, Check, MessageSquare, Type, Trash2, Settings2, Minus, MoreHorizontal, GripHorizontal, Copy } from 'lucide-react';
+import { Camera, RefreshCw, Wand2, Download, Eye, EyeOff, Layers, X, Image as ImageIcon, Upload, CheckCircle2, Check, MessageSquare, Type, Trash2, Settings2, Minus, MoreHorizontal, GripHorizontal, Copy, ToggleLeft, ToggleRight } from 'lucide-react';
 
 interface EditorProps {
   selectedItem: VocabItem | null;
@@ -178,31 +178,38 @@ const drawCellContent = (
         ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
     }
 
-    // Scale Factor
-    const scale = w / 1000; 
+    // Scale Factor Calculation
+    // Base reference: 1000px width square.
+    // Logic: Use width primarily, but if height is significantly smaller (like Split V), 
+    // restrict scale so text doesn't look massive on a thin strip.
+    // 1.4 is a tolerance factor allowing wide strips to have slightly larger text than a pure square of that height.
+    const effectiveDimension = Math.min(w, h * 1.4); 
+    const scale = effectiveDimension / 1000;
 
     // 2. Draw Top Text (Word Info)
     if (cell.showWordInfo && wordItem) {
-        const padding = 20 * scale;
+        const padding = 16 * scale;
         
-        // Increase font size relative to container to match UI readability (approx 10% width for main word)
-        const wordSize = Math.max(12, 100 * scale); 
-        const phoneticSize = Math.max(10, 50 * scale);
-        const defSize = Math.max(12, 50 * scale);
+        // Revised Font Sizes - Scaled down to match screen aesthetic (roughly 60% of original)
+        const wordSize = Math.max(24, 56 * scale); 
+        const phoneticSize = Math.max(12, 28 * scale);
+        const defSize = Math.max(16, 30 * scale);
         
+        const lineHeight = 1.4;
+
         ctx.font = `bold ${defSize}px "Noto Sans TC", sans-serif`;
         const defLines = getLines(ctx, wordItem.definition, w - (padding * 2));
-        const defLineHeight = defSize * 1.4;
+        const defLineHeight = defSize * lineHeight;
         
-        const totalContentHeight = (wordSize * 1.2) + (10 * scale) + (defLines.length * defLineHeight);
-        const boxHeight = totalContentHeight + (padding * 2);
+        const totalContentHeight = (wordSize * 1.1) + (10 * scale) + (defLines.length * defLineHeight);
+        const boxHeight = totalContentHeight + (padding * 1.5);
 
-        drawRoundedRect(ctx, x, y, w, boxHeight, 0, 'rgba(255, 255, 255, 0.85)');
+        drawRoundedRect(ctx, x, y, w, boxHeight, 0, 'rgba(255, 255, 255, 0.9)');
 
         ctx.textAlign = 'center';
         const centerX = x + (w / 2);
 
-        let currentY = y + padding + (wordSize * 0.9);
+        let currentY = y + padding + (wordSize * 0.85);
         
         ctx.font = `900 ${wordSize}px "Comic Neue", sans-serif`;
         const wordWidth = ctx.measureText(wordItem.word).width;
@@ -228,15 +235,15 @@ const drawCellContent = (
         
         defLines.forEach(line => {
             currentY += defLineHeight;
-            ctx.fillText(line, centerX, currentY - (defLineHeight * 0.3)); 
+            ctx.fillText(line, centerX, currentY - (defLineHeight * 0.25)); 
         });
     }
 
     // 3. Draw Bottom Text (Sentences)
     if (cell.showSentences && wordItem) {
         const padding = 16 * scale;
-        const sentSize = Math.max(12, 45 * scale); // ~4.5% of width
-        const lineHeight = sentSize * 1.3;
+        const sentSize = Math.max(14, 28 * scale); 
+        const lineHeight = sentSize * 1.4;
 
         ctx.font = `bold ${sentSize}px "Comic Neue", sans-serif`;
         const engLines = getLines(ctx, wordItem.englishSentence, w - (padding * 2));
@@ -245,11 +252,11 @@ const drawCellContent = (
         const targetLines = getLines(ctx, wordItem.targetSentence, w - (padding * 2));
 
         const totalTextHeight = (engLines.length * lineHeight) + (8 * scale) + (targetLines.length * lineHeight);
-        const boxHeight = totalTextHeight + (padding * 2);
+        const boxHeight = totalTextHeight + (padding * 1.5);
 
         const boxY = y + h - boxHeight;
 
-        drawRoundedRect(ctx, x, boxY, w, boxHeight, 0, 'rgba(0, 0, 0, 0.7)');
+        drawRoundedRect(ctx, x, boxY, w, boxHeight, 0, 'rgba(0, 0, 0, 0.75)');
 
         let currentY = boxY + padding + (sentSize * 0.8);
 
@@ -322,6 +329,10 @@ export const Editor: React.FC<EditorProps> = ({
             const wordId = gridAssignments[i];
             
             // 1. Try to find existing cell state in previous render (preserves loading state, options)
+            // This is CRITICAL for the "Steal/Move" logic.
+            // When a word moves from Cell B to Cell A, 'gridAssignments' changes.
+            // For Cell A (new owner): wordId is set. We find the cell data from prevCells that HAD this wordId (Cell B).
+            // We then clone that data (image, prompt, etc.) into the new cell.
             let existingCell = prevCells.find(c => c.wordId === wordId && wordId !== 0);
 
             // 2. If valid word but no cell, check cache for image
@@ -361,8 +372,38 @@ export const Editor: React.FC<EditorProps> = ({
       return "1:1"; // Default Square
   };
 
+  // Helper to calculate DOM Preview Scale (for font sizes)
+  // This aims to mimic the `scale` logic in drawCellContent but for CSS `rem` values
+  const getCellScale = (layout: number, idx: number): number => {
+      switch (layout) {
+          case 0: return 1.0; // Single
+          case 1: return 0.65; // Split H (Tall/Narrow)
+          case 2: return 0.8; // Split V (Wide/Short)
+          case 3: return 0.55; // Grid 4
+          case 4: return idx === 0 ? 1.0 : 0.55; // Left Focus
+          case 5: return idx === 2 ? 1.0 : 0.55; // Right Focus
+          case 6: return 0.38; // Grid 9
+          default: return 1.0;
+      }
+  };
+
+  // Global Toggles Logic
+  const allInfoVisible = cells.length > 0 && cells.every(c => c.showWordInfo);
+  const allSentencesVisible = cells.length > 0 && cells.every(c => c.showSentences);
+
+  const toggleAllInfo = () => {
+    const targetState = !allInfoVisible;
+    setCells(prev => prev.map(c => ({ ...c, showWordInfo: targetState })));
+  };
+
+  const toggleAllSentences = () => {
+    const targetState = !allSentencesVisible;
+    setCells(prev => prev.map(c => ({ ...c, showSentences: targetState })));
+  };
+
+
   // --- INDIVIDUAL DOWNLOAD / COPY LOGIC ---
-  const renderCellToCanvas = async (cell: GridCellData, wordItem: VocabItem): Promise<HTMLCanvasElement | null> => {
+  const renderCellToCanvas = async (cell: GridCellData, wordItem: VocabItem, layoutId: number, index: number): Promise<HTMLCanvasElement | null> => {
       if (!cell.imageSrc) return null;
 
       const img = new Image();
@@ -370,9 +411,33 @@ export const Editor: React.FC<EditorProps> = ({
       img.src = cell.imageSrc;
       await new Promise(r => img.onload = r);
 
+      // Determine the visible Aspect Ratio based on Layout
+      // This ensures the downloaded image matches the crop seen on screen
+      const aspectRatioStr = getTargetAspectRatio(layoutId, index);
+      const [rw, rh] = aspectRatioStr.split(':').map(Number);
+      const targetRatio = rw / rh;
+      const imgRatio = img.naturalWidth / img.naturalHeight;
+
+      let canvasW, canvasH;
+
+      // Calculate max resolution crop that matches target ratio
+      if (imgRatio > targetRatio) {
+          // Image is wider than target crop. Height acts as constraint.
+          // e.g. Image 1024x1024 (1:1), Target 9:16 (Tall).
+          // We keep full height 1024. Width becomes 1024 * (9/16) = 576.
+          canvasH = img.naturalHeight;
+          canvasW = canvasH * targetRatio;
+      } else {
+          // Image is taller or equal to target crop. Width acts as constraint.
+          // e.g. Image 1024x1024 (1:1), Target 16:9 (Wide).
+          // We keep full width 1024. Height becomes 1024 / (16/9) = 576.
+          canvasW = img.naturalWidth;
+          canvasH = canvasW / targetRatio;
+      }
+
       const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
+      canvas.width = canvasW;
+      canvas.height = canvasH;
       const ctx = canvas.getContext('2d');
       if (!ctx) return null;
 
@@ -389,12 +454,17 @@ export const Editor: React.FC<EditorProps> = ({
 
       let downloadUrl = cell.imageSrc;
 
-      // If text overlays are enabled, render them first
-      if (cell.showWordInfo || cell.showSentences) {
-          const canvas = await renderCellToCanvas(cell, item!);
-          if (canvas) {
-              downloadUrl = canvas.toDataURL('image/png');
-          }
+      // Use renderCellToCanvas to get proper crop AND overlays
+      // Even if no overlays, we might want the crop if the layout dictates it.
+      // But typically without overlays, users might expect original image. 
+      // However, prompt asked for "proportions seen on screen".
+      // So we always render via canvas if layout dictates a crop different from natural.
+      
+      const naturalRatio = 1; // Assuming mostly square outputs from Gemini unless specific
+      // Just always render via canvas to ensure consistency of crop & text
+      const canvas = await renderCellToCanvas(cell, item!, layoutId, index);
+      if (canvas) {
+          downloadUrl = canvas.toDataURL('image/png');
       }
 
       const link = document.createElement('a');
@@ -414,13 +484,11 @@ export const Editor: React.FC<EditorProps> = ({
       try {
           let blob: Blob | null = null;
           
-          if (cell.showWordInfo || cell.showSentences) {
-               const canvas = await renderCellToCanvas(cell, item!);
-               if (canvas) {
-                   blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-               }
+          const canvas = await renderCellToCanvas(cell, item!, layoutId, index);
+          if (canvas) {
+              blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
           } else {
-              // Just fetch original
+              // Fallback
               const res = await fetch(cell.imageSrc);
               blob = await res.blob();
           }
@@ -763,12 +831,35 @@ export const Editor: React.FC<EditorProps> = ({
 
   if (!selectedItem && layoutId === 0) {
     return (
-        <div className="flex-1 h-full flex flex-col items-center justify-center bg-orange-50 text-gray-500 p-8 text-center">
-            <div className="bg-white p-8 rounded-full shadow-lg mb-6">
-              <Camera size={48} className="text-orange-300" />
+        <div className="flex-1 h-full flex flex-col items-center justify-center bg-orange-50 text-gray-500 p-8 text-center relative overflow-hidden">
+            {/* Decorative Background Elements - Adjusted for Space Theme */}
+            <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-indigo-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse"></div>
+            <div className="absolute top-1/3 right-1/4 w-64 h-64 bg-orange-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse delay-75"></div>
+
+            {/* Main Image Container */}
+            <div className="relative mb-8 group">
+                <div className="absolute inset-0 bg-white rounded-full blur-xl opacity-80 scale-110"></div>
+                {/* 
+                    Updated to Astronaut Cat. 
+                    User: Replace src with your local file if desired.
+                */}
+                <img 
+                    src="https://img.freepik.com/free-vector/cute-cat-astronaut-waving-hand-cartoon-vector-icon-illustration-animal-technology-icon-isolated_138676-4836.jpg" 
+                    alt="Sir Isaac Astronaut" 
+                    className="relative w-56 h-56 rounded-full object-cover border-8 border-white shadow-[0_20px_50px_-12px_rgba(79,70,229,0.4)] transform transition-transform duration-500 hover:scale-105 z-10"
+                />
+                
+                {/* Floating Badge */}
+                <div className="absolute -bottom-2 -right-2 bg-white p-3 rounded-full shadow-lg border-2 border-indigo-100 z-20 animate-bounce">
+                     <Camera className="text-indigo-600 w-8 h-8" />
+                </div>
             </div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Welcome to Vocab Studio!</h2>
-            <p className="text-lg max-w-md">Use the <span className="font-bold text-orange-600">Setup Panel</span> to generate a vocabulary list based on your interests or specific words.</p>
+
+            <h2 className="text-3xl font-black text-gray-800 mb-3 tracking-tight">Welcome to Vocab Studio!</h2>
+            <p className="text-lg text-gray-600 max-w-md leading-relaxed">
+                Use the <span className="font-bold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-md mx-1">Setup Panel</span> 
+                to generate a vocabulary list based on your interests.
+            </p>
         </div>
     )
   }
@@ -787,26 +878,52 @@ export const Editor: React.FC<EditorProps> = ({
     <div className="flex-1 h-full overflow-y-auto p-4 md:p-8 flex flex-col items-center bg-gray-50/50">
       
        {/* Layout Selector */}
-       <div className="flex flex-nowrap items-center gap-1 md:gap-2 mb-8 p-1.5 md:p-2 bg-white/90 backdrop-blur rounded-full border-2 border-gray-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] w-fit max-w-[95vw] mx-auto z-40 sticky top-0 no-scrollbar">
-          {LAYOUTS.map((l) => (
-              <button
-                  key={l.id}
-                  onClick={() => onLayoutChange(l.id, l.count)}
-                  className={`p-1.5 md:p-3 rounded-full border-2 transition-all shrink-0 ${layoutId === l.id ? 'bg-orange-500 text-white border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transform -translate-y-0.5' : 'border-transparent text-gray-400 hover:bg-gray-100'}`}
-                  title={l.name}
-              >
-                  <div className="w-5 h-5 md:w-6 md:h-6">
-                    {l.icon}
-                  </div>
-              </button>
-          ))}
-      </div>
+       <div className="flex flex-col items-center gap-4 mb-8 sticky top-0 z-40 w-fit max-w-[95vw]">
+            <div className="flex flex-nowrap items-center gap-1 md:gap-2 p-1.5 md:p-2 bg-white/90 backdrop-blur rounded-full border-2 border-gray-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] no-scrollbar overflow-x-auto">
+                {LAYOUTS.map((l) => (
+                    <button
+                        key={l.id}
+                        onClick={() => onLayoutChange(l.id, l.count)}
+                        className={`p-1.5 md:p-3 rounded-full border-2 transition-all shrink-0 ${layoutId === l.id ? 'bg-orange-500 text-white border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transform -translate-y-0.5' : 'border-transparent text-gray-400 hover:bg-gray-100'}`}
+                        title={l.name}
+                    >
+                        <div className="w-5 h-5 md:w-6 md:h-6">
+                            {l.icon}
+                        </div>
+                    </button>
+                ))}
+            </div>
+
+            {/* Global Toggles (Only visible in Grid layouts) */}
+            {layoutId > 0 && (
+                <div className="flex items-center gap-2 p-1.5 bg-white/90 backdrop-blur rounded-xl border border-gray-300 shadow-sm animate-in fade-in slide-in-from-top-2">
+                    <button 
+                        onClick={toggleAllInfo}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${allInfoVisible ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                    >
+                        <Type size={14} />
+                        {allInfoVisible ? 'Hide All Words' : 'Show All Words'}
+                    </button>
+                    <div className="w-px h-4 bg-gray-300"></div>
+                    <button 
+                        onClick={toggleAllSentences}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${allSentencesVisible ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                    >
+                        <MessageSquare size={14} />
+                        {allSentencesVisible ? 'Hide All Sentences' : 'Show All Sentences'}
+                    </button>
+                </div>
+            )}
+       </div>
 
        {/* === UNIFIED GRID VIEW (Single & Multi) === */}
        <div className={`w-full max-w-4xl grid gap-3 md:gap-x-6 md:gap-y-10 mb-12 ${getGridClasses()}`}>
             {cells.map((cell, index) => {
                 const cellWordItem = vocabItems.find(v => v.id === cell.wordId);
                 const isSelected = activeCellIndex === index;
+                
+                // Calculate Dynamic Font Scale for DOM Preview
+                const cellScale = getCellScale(layoutId, index);
 
                 return (
                     <div 
@@ -815,6 +932,7 @@ export const Editor: React.FC<EditorProps> = ({
                         onClick={() => onActiveCellChange(index)}
                         draggable
                         onDragStart={(e) => handleDragStart(e, index)}
+                        onDragEnd={() => setDraggedIndex(null)} // Reset drag style on cancel/fail
                         onDragOver={(e) => handleDragOver(e, index)}
                         onDrop={(e) => handleDrop(e, index)}
                     >
@@ -843,16 +961,19 @@ export const Editor: React.FC<EditorProps> = ({
                                                 // Create copy of assignments
                                                 const newAssignments = [...gridAssignments];
                                                 
-                                                // Check if this word is already assigned elsewhere (Stealing/Move logic)
+                                                // "STEAL" LOGIC:
+                                                // If this word is already assigned to another cell (Box B), remove it from Box B (set to 0).
+                                                // The useEffect hook will then handle moving Box B's image/data to this cell (Box A)
+                                                // because it tracks state by `wordId`.
                                                 if (newWordId !== 0) {
                                                     const existingIndex = newAssignments.indexOf(newWordId);
                                                     if (existingIndex !== -1 && existingIndex !== index) {
-                                                        // "Steal" the word: Clear the old location
+                                                        // Clear the old location (Box B becomes default)
                                                         newAssignments[existingIndex] = 0; 
                                                     }
                                                 }
                                                 
-                                                // Assign to current location
+                                                // Assign to current location (Box A gets the word)
                                                 newAssignments[index] = newWordId;
                                                 
                                                 // Update Parent (This triggers the useEffect below to rearrange images automatically)
@@ -861,11 +982,9 @@ export const Editor: React.FC<EditorProps> = ({
                                         >
                                             <option value={0}>Select a word...</option>
                                             {vocabItems.map(v => {
-                                                // Check if this word is used in ANY OTHER cell (prevent duplicates)
-                                                const isUsedElsewhere = gridAssignments.some((id, idx) => id === v.id && idx !== index);
                                                 return (
                                                     <option key={v.id} value={v.id}>
-                                                        {v.word} {isUsedElsewhere ? '(Move here)' : ''}
+                                                        {v.word}
                                                     </option>
                                                 )
                                             })}
@@ -909,20 +1028,45 @@ export const Editor: React.FC<EditorProps> = ({
                                         
                                         {/* TOP OVERLAY: Word Info (If Checked) */}
                                         {cellWordItem && cell.showWordInfo && (
-                                            <div className="absolute top-0 left-0 right-0 bg-white/85 p-3 backdrop-blur-sm border-b border-gray-200 animate-in fade-in slide-in-from-top-2 z-10 text-center">
+                                            <div className="absolute top-0 left-0 right-0 bg-white/90 p-3 backdrop-blur-sm border-b border-gray-200 animate-in fade-in slide-in-from-top-2 z-10 text-center">
                                                 <div className="flex items-baseline gap-2 mb-1 justify-center flex-wrap">
-                                                    <span className="font-black text-sm md:text-xl leading-none">{cellWordItem.word}</span>
-                                                    <span className="font-sans text-[10px] md:text-sm text-gray-600">{cellWordItem.phonetic}</span>
+                                                    <span 
+                                                        className="font-black leading-none" 
+                                                        style={{ fontSize: `${2.25 * cellScale}rem` }}
+                                                    >
+                                                        {cellWordItem.word}
+                                                    </span>
+                                                    <span 
+                                                        className="font-sans text-gray-600"
+                                                        style={{ fontSize: `${1.1 * cellScale}rem` }}
+                                                    >
+                                                        {cellWordItem.phonetic}
+                                                    </span>
                                                 </div>
-                                                <div className="text-xs md:text-base font-bold chinese-text text-gray-900 leading-snug line-clamp-2">{cellWordItem.definition}</div>
+                                                <div 
+                                                    className="font-bold chinese-text text-gray-900 leading-snug line-clamp-2"
+                                                    style={{ fontSize: `${1.25 * cellScale}rem`, lineHeight: 1.4 }}
+                                                >
+                                                    {cellWordItem.definition}
+                                                </div>
                                             </div>
                                         )}
 
                                         {/* BOTTOM OVERLAY: Sentence (If Checked) */}
                                         {cellWordItem && cell.showSentences && (
-                                            <div className="absolute bottom-0 left-0 right-0 bg-black/70 p-2 backdrop-blur-sm text-white animate-in fade-in slide-in-from-bottom-2 z-10 text-center">
-                                                <p className="text-[10px] md:text-sm font-medium leading-snug mb-0.5 opacity-90 line-clamp-3">{cellWordItem.englishSentence}</p>
-                                                <p className="text-[10px] md:text-sm chinese-text text-gray-300 leading-snug line-clamp-3">{cellWordItem.targetSentence}</p>
+                                            <div className="absolute bottom-0 left-0 right-0 bg-black/75 p-2 backdrop-blur-sm text-white animate-in fade-in slide-in-from-bottom-2 z-10 text-center">
+                                                <p 
+                                                    className="font-bold leading-snug mb-1 opacity-95 line-clamp-3"
+                                                    style={{ fontSize: `${1.1 * cellScale}rem`, lineHeight: 1.4 }}
+                                                >
+                                                    {cellWordItem.englishSentence}
+                                                </p>
+                                                <p 
+                                                    className="chinese-text text-gray-300 leading-snug line-clamp-3"
+                                                    style={{ fontSize: `${1.1 * cellScale}rem`, lineHeight: 1.4 }}
+                                                >
+                                                    {cellWordItem.targetSentence}
+                                                </p>
                                             </div>
                                         )}
                                         

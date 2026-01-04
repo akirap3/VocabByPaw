@@ -155,6 +155,14 @@ const App: React.FC = () => {
           // Ensure array is large enough (just in case)
           while (newAssignments.length <= activeCellIndex) newAssignments.push(0);
           
+          // "STEAL" LOGIC (Same as dropdown):
+          // Check if this word is already assigned to another cell (Box B).
+          // If so, clear Box B (set to 0) so the image/data can "move" to the active cell.
+          const existingIndex = newAssignments.indexOf(item.id);
+          if (existingIndex !== -1 && existingIndex !== activeCellIndex) {
+               newAssignments[existingIndex] = 0;
+          }
+
           newAssignments[activeCellIndex] = item.id;
           setGridAssignments(newAssignments);
       } else {
@@ -215,7 +223,7 @@ const App: React.FC = () => {
                     {/* Sliding Paw Thumb */}
                     <div 
                         className={`absolute top-1/2 -translate-y-1/2 transition-transform duration-300 ease-in-out
-                        ${showInputPanel ? 'translate-x-11' : 'translate-x-1'}
+                        ${showInputPanel ? 'translate-x-10' : 'translate-x-1'}
                         `}
                     >
                         <div className="w-8 h-8 flex items-center justify-center bg-white rounded-full shadow-md border border-gray-200">
@@ -291,12 +299,7 @@ const App: React.FC = () => {
              ${isSidebarOpen && viewMode === 'list' ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} 
         `}>
             <div className="h-full relative flex">
-                 <button 
-                    onClick={() => setIsSidebarOpen(false)}
-                    className="absolute top-2 right-2 lg:hidden p-2 text-gray-500"
-                >
-                    <X size={20} />
-                </button>
+                 {/* Mobile Close Button passed as prop to VocabList instead */}
                 
                 <div className="h-full w-full overflow-hidden">
                     <VocabList 
@@ -307,6 +310,7 @@ const App: React.FC = () => {
                         gridAssignments={gridAssignments}
                         activeCellIndex={activeCellIndex}
                         onUnselectAll={handleUnselectAll}
+                        onClose={() => setIsSidebarOpen(false)}
                     />
                 </div>
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { VocabItem } from '../types';
-import { Eraser } from 'lucide-react';
+import { Eraser, X } from 'lucide-react';
 
 interface VocabListProps {
   items: VocabItem[];
@@ -10,6 +10,7 @@ interface VocabListProps {
   gridAssignments?: number[];
   activeCellIndex?: number;
   onUnselectAll?: () => void;
+  onClose?: () => void;
 }
 
 export const VocabList: React.FC<VocabListProps> = ({ 
@@ -19,27 +20,41 @@ export const VocabList: React.FC<VocabListProps> = ({
   layoutId = 0, 
   gridAssignments = [],
   activeCellIndex = 0,
-  onUnselectAll
+  onUnselectAll,
+  onClose
 }) => {
   return (
-    <div className="w-full bg-white border-r border-orange-200 overflow-y-auto h-full flex flex-col">
-       {/* Header Area with Unselect Option */}
-      <div className="p-4 pb-2">
+    <div className="w-full bg-white border-r border-orange-200 h-full flex flex-col overflow-hidden">
+       {/* Header Area with Unselect Option & Close Button - Fixed at top */}
+      <div className="p-4 pb-2 shrink-0 border-b border-transparent">
         <div className="flex justify-between items-center mb-2 md:mb-4 gap-2">
             <h2 className="text-lg md:text-xl font-bold text-orange-600 font-serif whitespace-nowrap">Results ({items.length})</h2>
-            {layoutId > 0 && onUnselectAll && (
-                <button 
-                    onClick={onUnselectAll}
-                    className="text-xs flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1.5 rounded transition-colors shrink-0"
-                    title="Clear all grid selections"
-                >
-                    <Eraser size={14} /> Unselect
-                </button>
-            )}
+            
+            <div className="flex items-center gap-2">
+                {layoutId > 0 && onUnselectAll && (
+                    <button 
+                        onClick={onUnselectAll}
+                        className="text-xs flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1.5 rounded transition-colors shrink-0"
+                        title="Clear all grid selections"
+                    >
+                        <Eraser size={14} /> Unselect
+                    </button>
+                )}
+                
+                {onClose && (
+                    <button 
+                        onClick={onClose}
+                        className="lg:hidden p-1.5 text-gray-500 hover:bg-gray-100 rounded-full transition-colors flex items-center justify-center"
+                        title="Close sidebar"
+                    >
+                        <X size={20} />
+                    </button>
+                )}
+            </div>
         </div>
       </div>
       
-      <div className="space-y-2 p-4 pt-0">
+      <div className="space-y-2 p-4 pt-0 flex-1 overflow-y-auto">
         {items.length === 0 ? (
             <p className="text-gray-400 text-center mt-10 italic">No words generated yet. Use the panel to start.</p>
         ) : (
