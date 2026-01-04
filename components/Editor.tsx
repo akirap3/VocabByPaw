@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { VocabItem, AppMode } from '../types';
 import { generateImageContent } from '../services/geminiService';
-import { RefreshCw, Wand2, Download, Layers, X, Image as ImageIcon, Upload, Check, MessageSquare, Type, Trash2, Settings2, Minus, MoreHorizontal, GripHorizontal, Copy, Edit3, Star, RotateCcw } from 'lucide-react';
+import { RefreshCw, Wand2, Download, Layers, X, Image as ImageIcon, Upload, Check, MessageSquare, Type, Trash2, Settings2, Minus, MoreHorizontal, GripHorizontal, Copy, Edit3, RotateCcw } from 'lucide-react';
 
 interface EditorProps {
   selectedItem: VocabItem | null;
@@ -154,15 +154,15 @@ const drawCellContent = (
     if (img) {
         const ratio = img.width / img.height;
         const targetRatio = w / h;
-        let sx = 0, sy = 0, sw = img.width, sh = img.height;
+        let sx = 0, sy = 0, sw = img.width, sw_h = img.height;
         if (ratio > targetRatio) {
             sw = img.height * targetRatio;
             sx = (img.width - sw) / 2;
         } else {
-            sh = img.width / targetRatio;
-            sy = (img.height - sh) / 2;
+            sw_h = img.width / targetRatio;
+            sy = (img.height - sw_h) / 2;
         }
-        ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+        ctx.drawImage(img, sx, sy, sw, sw_h, x, y, w, h);
     }
     const effectiveDimension = Math.min(w, h * 1.4); 
     const scale = effectiveDimension / 1000;
@@ -251,7 +251,7 @@ export const Editor: React.FC<EditorProps> = ({
     gridAssignments,
     onGridUpdate,
     activeCellIndex = 0,
-    onActiveCellChange = () => {},
+    onActiveCellChange = (_index: number) => {},
     appMode = 'vocab',
     onImageCacheChange,
     onStitchedImageChange
@@ -262,10 +262,7 @@ export const Editor: React.FC<EditorProps> = ({
 
   const layoutPersistence = useRef<Record<number, GridCellData[]>>({});
   const prevLayoutId = useRef<number>(layoutId);
-  const [customCharacter, setCustomCharacter] = useState<string | null>(null);
   const [starsFar] = useState(() => generateStars(40));
-  const [starsMid] = useState(() => generateStars(20));
-  const [starsNear] = useState(() => generateStars(10));
   
   const imageCacheRef = useRef<Map<number, string>>(new Map());
   const [magicPrompt, setMagicPrompt] = useState("");
@@ -277,11 +274,6 @@ export const Editor: React.FC<EditorProps> = ({
       show: false, color: '#ffffff', style: 'solid', thickness: 20
   });
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-
-  useEffect(() => {
-      const savedCharacter = localStorage.getItem('vocab_studio_custom_character');
-      if (savedCharacter) setCustomCharacter(savedCharacter);
-  }, []);
 
   useEffect(() => {
     if (appMode === 'vocab' && vocabItems.length === 0) return;
@@ -332,7 +324,6 @@ export const Editor: React.FC<EditorProps> = ({
     onStitchedImageChange?.(null);
   }, [gridAssignments, vocabItems, appMode, layoutId]); 
 
-  // Notify parent of image changes
   useEffect(() => {
       if (onImageCacheChange) {
           const cache: Record<number, string> = {};
@@ -507,20 +498,6 @@ export const Editor: React.FC<EditorProps> = ({
     }
     e.target.value = '';
   };
-  
-  const handleCharacterUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-              const result = reader.result as string;
-              setCustomCharacter(result);
-              localStorage.setItem('vocab_studio_custom_character', result);
-          };
-          reader.readAsDataURL(file);
-      }
-      e.target.value = '';
-  };
 
   const updateCell = (index: number, updates: Partial<GridCellData>) => {
     setCells(prev => {
@@ -558,7 +535,7 @@ export const Editor: React.FC<EditorProps> = ({
       if (draggedIndex === null || draggedIndex === targetIndex) return;
       const newAssignments = [...gridAssignments];
       const draggedWordId = newAssignments[draggedIndex];
-      newAssignments.splice(draggedIndex, 1);
+      newAssignments.splice(draggedIndex as number, 1);
       newAssignments.splice(targetIndex, 0, draggedWordId);
       onGridUpdate(newAssignments);
       if (appMode === 'collage') {
@@ -566,7 +543,7 @@ export const Editor: React.FC<EditorProps> = ({
               const newCells = [...prev];
               if (draggedIndex === null) return prev;
               const draggedCell = newCells[draggedIndex];
-              newCells.splice(draggedIndex, 1);
+              newCells.splice(draggedIndex as number, 1);
               newCells.splice(targetIndex, 0, draggedCell);
               return newCells;
           });
@@ -696,8 +673,6 @@ export const Editor: React.FC<EditorProps> = ({
                 .animate-space-float { animation: space-float 7s ease-in-out infinite; }
                 .animate-space-drift { animation: space-drift 5s ease-in-out infinite; }
                 .animate-drift-far { animation: star-slide 120s linear infinite; }
-                .animate-drift-mid { animation: star-slide 80s linear infinite; }
-                .animate-drift-near { animation: star-slide 40s linear infinite; }
             `}</style>
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
                 <div className="absolute inset-0 animate-drift-far opacity-30">
@@ -707,16 +682,12 @@ export const Editor: React.FC<EditorProps> = ({
             </div>
             <div className="relative mb-8 z-10 animate-space-float">
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-white/60 blur-3xl rounded-full pointer-events-none"></div>
-                <div className="relative animate-space-drift group cursor-pointer">
+                <div className="relative animate-space-drift group">
                     <img 
-                        src={customCharacter || "https://img.freepik.com/free-vector/hand-drawn-cat-astronaut-illustration_23-2151368058.jpg"}
+                        src="https://raw.githubusercontent.com/akirap3/OrangeCatEnglishDiary/refs/heads/main/images/vocabByPaw/meowaustrant.png"
                         alt="Sir Isaac Astronaut" 
-                        className="relative h-80 w-auto object-contain drop-shadow-[0_20px_50px_rgba(0,0,0,0.15)] transform transition-transform duration-500 group-hover:scale-105"
+                        className="relative h-80 w-auto object-contain drop-shadow-[0_20px_50px_rgba(0,0,0,0.15)] transform transition-transform duration-500"
                     />
-                    <label className="absolute bottom-10 right-0 bg-orange-500 hover:bg-orange-600 text-white p-2.5 rounded-full shadow-lg border-2 border-white cursor-pointer z-30 transition-all duration-300 opacity-0 group-hover:opacity-100 hover:scale-110 flex items-center justify-center group/edit" title="Upload your own cat image">
-                        <input type="file" accept="image/*" onChange={handleCharacterUpload} className="hidden" />
-                        <Edit3 size={16} />
-                    </label>
                 </div>
             </div>
             <h2 className="text-3xl font-black text-slate-800 mb-3 tracking-tight z-10">Welcome to Vocab Studio!</h2>

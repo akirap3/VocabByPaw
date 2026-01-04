@@ -4,7 +4,7 @@ import { VocabList } from './components/VocabList';
 import { Editor } from './components/Editor';
 import { InputPanel } from './components/InputPanel';
 import { VocabItem, VocabGenerationParams, AppMode } from './types';
-import { Sparkles, Menu, X, Layout, Settings, Cat, PawPrint, GripVertical, Image, BookType } from 'lucide-react';
+import { Sparkles, Menu, X, Settings, PawPrint, Image, BookType } from 'lucide-react';
 import { generateVocabList } from './services/geminiService';
 
 const App: React.FC = () => {
@@ -13,9 +13,15 @@ const App: React.FC = () => {
   const [selectedItem, setSelectedItem] = useState<VocabItem | null>(null);
   const [themeSentence, setThemeSentence] = useState<string>("");
   
-  const [layoutId, setLayoutId] = useState(0);
-  const [gridAssignments, setGridAssignments] = useState<number[]>([]);
-  const [activeCellIndex, setActiveCellIndex] = useState(0);
+  // Vocab Studio State
+  const [vocabLayoutId, setVocabLayoutId] = useState(0);
+  const [vocabGridAssignments, setVocabGridAssignments] = useState<number[]>([]);
+  const [vocabActiveCellIndex, setVocabActiveCellIndex] = useState(0);
+
+  // Collage Mode State
+  const [collageLayoutId, setCollageLayoutId] = useState(0);
+  const [collageGridAssignments, setCollageGridAssignments] = useState<number[]>([0]);
+  const [collageActiveCellIndex, setCollageActiveCellIndex] = useState(0);
 
   // Sync image data for export
   const [imageCache, setImageCache] = useState<Record<number, string>>({});
@@ -27,11 +33,11 @@ const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<'input' | 'list'>('list');
 
   const [inputPanelWidth, setInputPanelWidth] = useState(250);
-  const [resultsPanelWidth, setResultsPanelWidth] = useState(280);
+  const [resultsPanelWidth, setResultsPanelWidth] = useState(300); // 最小寬度調整為 300
   const [isResizing, setIsResizing] = useState(false);
   
   const resizingState = useRef<'input' | 'results' | null>(null);
-  const widthsRef = useRef({ input: 250, results: 280 });
+  const widthsRef = useRef({ input: 250, results: 300 });
   const showInputPanelRef = useRef(showInputPanel);
 
   useEffect(() => {
@@ -53,8 +59,7 @@ const App: React.FC = () => {
               document.body.style.cursor = 'col-resize';
           } else if (resizingState.current === 'results') {
               const inputWidth = showInputPanelRef.current ? widthsRef.current.input : 0;
-              // Min width increased to 280 to fit unselect and export buttons
-              const newWidth = Math.max(280, Math.min(600, e.clientX - inputWidth));
+              const newWidth = Math.max(300, Math.min(600, e.clientX - inputWidth));
               setResultsPanelWidth(newWidth);
               document.body.style.cursor = 'col-resize';
           }
@@ -82,9 +87,9 @@ const App: React.FC = () => {
           setThemeSentence(result.theme);
           if (result.items.length > 0) {
               setSelectedItem(result.items[0]);
-              setGridAssignments([result.items[0].id]);
-              setLayoutId(0);
-              setActiveCellIndex(0);
+              setVocabGridAssignments([result.items[0].id]);
+              setVocabLayoutId(0);
+              setVocabActiveCellIndex(0);
               if (window.innerWidth < 1024) {
                   setViewMode('list');
                   setIsSidebarOpen(true);
@@ -98,62 +103,70 @@ const App: React.FC = () => {
   };
 
   const handleLayoutChange = (id: number, count: number) => {
-      setLayoutId(id);
-      setActiveCellIndex(0);
-      const newAssignments: number[] = [];
-      for (let i = 0; i < count; i++) {
-          if (appMode === 'vocab' && i < vocabItems.length) {
-              newAssignments.push(vocabItems[i].id);
-          } else {
-              newAssignments.push(0); 
+      if (appMode === 'vocab') {
+          setVocabLayoutId(id);
+          setVocabActiveCellIndex(0);
+          const newAssignments: number[] = [];
+          for (let i = 0; i < count; i++) {
+              if (i < vocabItems.length) {
+                  newAssignments.push(vocabItems[i].id);
+              } else {
+                  newAssignments.push(0); 
+              }
           }
-      }
-      setGridAssignments(newAssignments);
-      if (appMode === 'vocab' && id === 0 && vocabItems.length > 0) {
-          setSelectedItem(vocabItems[0]);
+          setVocabGridAssignments(newAssignments);
+          if (id === 0 && vocabItems.length > 0) {
+              setSelectedItem(vocabItems[0]);
+          }
+      } else {
+          setCollageLayoutId(id);
+          setCollageActiveCellIndex(0);
+          setCollageGridAssignments(new Array(count).fill(0));
       }
   };
 
   const handleUnselectAll = () => {
-      setGridAssignments(prev => prev.map(() => 0));
+      if (appMode === 'vocab') {
+          setVocabGridAssignments(prev => prev.map(() => 0));
+      } else {
+          setCollageGridAssignments(prev => prev.map(() => 0));
+      }
   };
 
   const handleGridUpdate = (newAssignments: number[]) => {
-      setGridAssignments(newAssignments);
+      if (appMode === 'vocab') {
+          setVocabGridAssignments(newAssignments);
+      } else {
+          setCollageGridAssignments(newAssignments);
+      }
   };
 
   const handleVocabSelect = (item: VocabItem) => {
       setSelectedItem(item);
-      if (layoutId > 0) {
-          const newAssignments = [...gridAssignments];
-          while (newAssignments.length <= activeCellIndex) newAssignments.push(0);
+      if (vocabLayoutId > 0) {
+          const newAssignments = [...vocabGridAssignments];
+          while (newAssignments.length <= vocabActiveCellIndex) newAssignments.push(0);
           const existingIndex = newAssignments.indexOf(item.id);
-          if (existingIndex !== -1 && existingIndex !== activeCellIndex) {
+          if (existingIndex !== -1 && existingIndex !== vocabActiveCellIndex) {
                newAssignments[existingIndex] = 0;
           }
-          newAssignments[activeCellIndex] = item.id;
-          setGridAssignments(newAssignments);
+          newAssignments[vocabActiveCellIndex] = item.id;
+          setVocabGridAssignments(newAssignments);
       } else {
-          setGridAssignments([item.id]);
+          setVocabGridAssignments([item.id]);
       }
       setIsSidebarOpen(false);
   };
   
   const toggleAppMode = (mode: AppMode) => {
       setAppMode(mode);
-      setLayoutId(0); 
-      if (mode === 'collage') {
-          setGridAssignments([0]);
-      } else {
-          if (vocabItems.length > 0) {
-              setGridAssignments([vocabItems[0].id]);
-              setSelectedItem(vocabItems[0]);
-          } else {
-              setGridAssignments([]);
-              setSelectedItem(null);
-          }
-      }
+      setStitchedImage(null); // 切換模式時清除合併圖預覽，確保不混淆
   };
+
+  const currentLayoutId = appMode === 'vocab' ? vocabLayoutId : collageLayoutId;
+  const currentGridAssignments = appMode === 'vocab' ? vocabGridAssignments : collageGridAssignments;
+  const currentActiveCellIndex = appMode === 'vocab' ? vocabActiveCellIndex : collageActiveCellIndex;
+  const setActiveCellIndex = appMode === 'vocab' ? setVocabActiveCellIndex : setCollageActiveCellIndex;
 
   return (
     <div 
@@ -234,8 +247,9 @@ const App: React.FC = () => {
             )}
         </div>
         
-        {appMode === 'vocab' && (
-            <div className="flex gap-2 lg:hidden">
+        <div className="flex gap-2 lg:hidden">
+             {appMode === 'vocab' && (
+               <>
                  <button 
                     className={`p-2 rounded ${viewMode === 'input' ? 'bg-orange-100 text-orange-800' : 'bg-gray-100'}`}
                     onClick={() => {
@@ -254,8 +268,9 @@ const App: React.FC = () => {
                 >
                     <Menu size={20} />
                 </button>
-            </div>
-        )}
+               </>
+             )}
+        </div>
       </header>
 
       <main className="flex flex-1 overflow-hidden relative">
@@ -302,9 +317,9 @@ const App: React.FC = () => {
                             onThemeChange={setThemeSentence}
                             selectedId={selectedItem?.id || null} 
                             onSelect={handleVocabSelect} 
-                            layoutId={layoutId}
-                            gridAssignments={gridAssignments}
-                            activeCellIndex={activeCellIndex}
+                            layoutId={vocabLayoutId}
+                            gridAssignments={vocabGridAssignments}
+                            activeCellIndex={vocabActiveCellIndex}
                             onUnselectAll={handleUnselectAll}
                             onClose={() => setIsSidebarOpen(false)}
                             imageCache={imageCache}
@@ -323,13 +338,13 @@ const App: React.FC = () => {
 
         <div className="flex-1 bg-pattern relative w-full h-full overflow-hidden">
            <Editor 
-                selectedItem={selectedItem} 
+                selectedItem={appMode === 'vocab' ? selectedItem : null} 
                 vocabItems={vocabItems}
-                layoutId={layoutId}
+                layoutId={currentLayoutId}
                 onLayoutChange={handleLayoutChange}
-                gridAssignments={gridAssignments}
+                gridAssignments={currentGridAssignments}
                 onGridUpdate={handleGridUpdate}
-                activeCellIndex={activeCellIndex}
+                activeCellIndex={currentActiveCellIndex}
                 onActiveCellChange={setActiveCellIndex}
                 appMode={appMode}
                 onImageCacheChange={setImageCache}
