@@ -12,6 +12,8 @@ export type GenerationMode = 'create' | 'edit';
 
 export type InputMode = 'manual' | 'topic';
 
+export type AppMode = 'vocab' | 'collage';
+
 export interface VocabGenerationParams {
   input: string;
   mode: InputMode;
