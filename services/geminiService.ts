@@ -52,11 +52,13 @@ export const generateImageContent = async (
 
 export const generateVocabList = async (params: VocabGenerationParams): Promise<{ theme: string, items: VocabItem[] }> => {
     try {
+        const charDesc = params.character?.promptSignature || "a chubby orange tabby cat with round glasses (Sir Isaac)";
+        
         let systemInstruction = `You are a professional linguist and vocabulary teacher. 
         Your task is to generate structured vocabulary cards and a "Theme Sentence" that summarizes the collection.
         The user wants the definitions and target sentences in this language: ${params.targetLanguage}.
         Ensure the 'phonetic' field uses KK Phonetic symbols.
-        Ensure the 'imagePrompt' describes a "Soft watercolor and ink illustration" featuring a chubby orange tabby cat with round glasses (Sir Isaac) acting out the word.
+        Ensure the 'imagePrompt' describes a "Soft watercolor and ink illustration" featuring ${charDesc} acting out the word.
         Include a 'theme' property which is a creative 1-sentence summary or title for this set of words.`;
 
         let userPrompt = "";

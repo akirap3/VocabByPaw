@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { VocabList } from './components/VocabList';
 import { Editor } from './components/Editor';
 import { InputPanel } from './components/InputPanel';
-import { VocabItem, VocabGenerationParams, AppMode } from './types';
+import { VocabItem, VocabGenerationParams, AppMode, Character, CHARACTERS } from './types';
 import { Sparkles, Menu, X, Settings, PawPrint, Image, BookType } from 'lucide-react';
 import { generateVocabList } from './services/geminiService';
 
@@ -12,6 +12,7 @@ const App: React.FC = () => {
   const [vocabItems, setVocabItems] = useState<VocabItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<VocabItem | null>(null);
   const [themeSentence, setThemeSentence] = useState<string>("");
+  const [selectedCharacter, setSelectedCharacter] = useState<Character>(CHARACTERS[0]);
   
   // Vocab Studio State
   const [vocabLayoutId, setVocabLayoutId] = useState(0);
@@ -33,7 +34,7 @@ const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<'input' | 'list'>('list');
 
   const [inputPanelWidth, setInputPanelWidth] = useState(250);
-  const [resultsPanelWidth, setResultsPanelWidth] = useState(300); // 最小寬度調整為 300
+  const [resultsPanelWidth, setResultsPanelWidth] = useState(300);
   const [isResizing, setIsResizing] = useState(false);
   
   const resizingState = useRef<'input' | 'results' | null>(null);
@@ -82,7 +83,7 @@ const App: React.FC = () => {
   const handleGenerateList = async (params: VocabGenerationParams) => {
       setIsGenerating(true);
       try {
-          const result = await generateVocabList(params);
+          const result = await generateVocabList({ ...params, character: selectedCharacter });
           setVocabItems(result.items);
           setThemeSentence(result.theme);
           if (result.items.length > 0) {
@@ -160,7 +161,7 @@ const App: React.FC = () => {
   
   const toggleAppMode = (mode: AppMode) => {
       setAppMode(mode);
-      setStitchedImage(null); // 切換模式時清除合併圖預覽，確保不混淆
+      setStitchedImage(null);
   };
 
   const currentLayoutId = appMode === 'vocab' ? vocabLayoutId : collageLayoutId;
@@ -349,6 +350,8 @@ const App: React.FC = () => {
                 appMode={appMode}
                 onImageCacheChange={setImageCache}
                 onStitchedImageChange={setStitchedImage}
+                selectedCharacter={selectedCharacter}
+                onCharacterChange={setSelectedCharacter}
            />
         </div>
       </main>

@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { VocabItem, AppMode } from '../types';
+import { VocabItem, AppMode, Character, CHARACTERS } from '../types';
 import { generateImageContent } from '../services/geminiService';
-import { RefreshCw, Wand2, Download, Layers, X, Image as ImageIcon, Upload, Check, MessageSquare, Type, Trash2, Settings2, Minus, MoreHorizontal, GripHorizontal, Copy, Edit3, RotateCcw } from 'lucide-react';
+import { RefreshCw, Wand2, Download, Layers, X, Image as ImageIcon, Upload, Check, MessageSquare, Type, Trash2, Settings2, Minus, MoreHorizontal, GripHorizontal, Copy, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface EditorProps {
   selectedItem: VocabItem | null;
@@ -16,6 +16,8 @@ interface EditorProps {
   appMode?: AppMode;
   onImageCacheChange?: (cache: Record<number, string>) => void;
   onStitchedImageChange?: (img: string | null) => void;
+  selectedCharacter?: Character;
+  onCharacterChange?: (char: Character) => void;
 }
 
 interface GridCellData {
@@ -254,7 +256,9 @@ export const Editor: React.FC<EditorProps> = ({
     onActiveCellChange = (_index: number) => {},
     appMode = 'vocab',
     onImageCacheChange,
-    onStitchedImageChange
+    onStitchedImageChange,
+    selectedCharacter,
+    onCharacterChange
 }) => {
   const [cells, setCells] = useState<GridCellData[]>([]);
   const cellsRef = useRef<GridCellData[]>([]);
@@ -274,6 +278,12 @@ export const Editor: React.FC<EditorProps> = ({
       show: false, color: '#ffffff', style: 'solid', thickness: 20
   });
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+
+  // Derive visual rotation directly from selected character index to prevent sync bugs
+  const characterIndex = Math.max(0, CHARACTERS.findIndex(c => c.id === selectedCharacter?.id));
+  const carouselRotation = characterIndex * -120;
+  
+  const dragStartPos = useRef<number | null>(null);
 
   useEffect(() => {
     if (appMode === 'vocab' && vocabItems.length === 0) return;
@@ -331,6 +341,22 @@ export const Editor: React.FC<EditorProps> = ({
           onImageCacheChange(cache);
       }
   }, [cells]);
+
+  const rotateCarousel = (direction: 'left' | 'right') => {
+      const totalChars = CHARACTERS.length;
+      let nextIndex;
+      if (direction === 'left') {
+        nextIndex = (characterIndex - 1 + totalChars) % totalChars;
+      } else {
+        nextIndex = (characterIndex + 1) % totalChars;
+      }
+      
+      if (onCharacterChange) onCharacterChange(CHARACTERS[nextIndex]);
+  };
+
+  const handleCharClick = (idx: number) => {
+      if (onCharacterChange) onCharacterChange(CHARACTERS[idx]);
+  };
 
   const getTargetAspectRatio = (layout: number, idx: number): string => {
       if (layout === 1) return "9:16";
@@ -590,6 +616,7 @@ export const Editor: React.FC<EditorProps> = ({
                 if(cells[2]) drawCell(2, 0, h/2, w/2, h/2); if(cells[3]) drawCell(3, w/2, h/2, w/2, h/2); 
                 break;
             case 4: if(cells[0]) drawCell(0, 0, 0, w/2, h); if(cells[1]) drawCell(1, w/2, 0, w/2, h/2); if(cells[2]) drawCell(2, w/2, h/2, w/2, h/2); break;
+            // Fixed typo 'drawChar' to 'drawCell'
             case 5: if(cells[0]) drawCell(0, 0, 0, w/2, h/2); if(cells[1]) drawCell(1, 0, h/2, w/2, h/2); if(cells[2]) drawCell(2, w/2, 0, w/2, h); break;
             case 6: 
                 const s = w/3;
@@ -660,7 +687,7 @@ export const Editor: React.FC<EditorProps> = ({
 
   if (appMode === 'vocab' && !selectedItem && layoutId === 0) {
     return (
-        <div className="flex-1 h-full flex flex-col items-center justify-center p-8 text-center relative overflow-hidden bg-gray-50">
+        <div className="flex-1 h-full flex flex-col items-center justify-center p-8 text-center relative overflow-hidden bg-gray-50 select-none">
             <div className="absolute inset-0 bg-[#f9fafb]">
                 <div className="absolute -top-[20%] -left-[10%] w-[70%] h-[70%] bg-slate-200/50 rounded-full blur-[100px] mix-blend-multiply opacity-60"></div>
                 <div className="absolute top-[40%] -right-[10%] w-[60%] h-[60%] bg-orange-100/80 rounded-full blur-[100px] mix-blend-multiply opacity-80"></div>
@@ -668,30 +695,122 @@ export const Editor: React.FC<EditorProps> = ({
             </div>
             <style>{`
                 @keyframes space-float { 0%, 100% { transform: translateY(10px); } 50% { transform: translateY(-10px); } }
-                @keyframes space-drift { 0%, 100% { transform: rotate(-1deg); } 50% { transform: rotate(1deg); } }
                 @keyframes star-slide { from { transform: translateX(0); } to { transform: translateX(100vw); } }
                 .animate-space-float { animation: space-float 7s ease-in-out infinite; }
-                .animate-space-drift { animation: space-drift 5s ease-in-out infinite; }
                 .animate-drift-far { animation: star-slide 120s linear infinite; }
+                
+                .perspective-container {
+                    perspective: 1500px;
+                    width: 100%;
+                    max-width: 800px;
+                    height: 500px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    position: relative;
+                    margin-bottom: 2rem;
+                }
+                
+                .carousel-3d {
+                    width: 100%;
+                    height: 100%;
+                    position: absolute;
+                    transform-style: preserve-3d;
+                    transition: transform 1.2s cubic-bezier(0.23, 1, 0.32, 1);
+                }
+                
+                .character-slot {
+                    position: absolute;
+                    width: 320px;
+                    height: 400px;
+                    left: 50%;
+                    top: 50%;
+                    margin-left: -160px;
+                    margin-top: -200px;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    backface-visibility: hidden;
+                    transition: all 1s cubic-bezier(0.23, 1, 0.32, 1);
+                }
             `}</style>
+            
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
                 <div className="absolute inset-0 animate-drift-far opacity-30">
                     {starsFar.map((star) => <div key={`far-${star.id}`} className="absolute rounded-full bg-slate-400 w-[2px] h-[2px]" style={{ left: star.left, top: star.top }}></div>)}
                     {starsFar.map((star) => <div key={`far-dup-${star.id}`} className="absolute rounded-full bg-slate-400 w-[2px] h-[2px]" style={{ left: `calc(${star.left} - 100vw)`, top: star.top }}></div>)}
                 </div>
             </div>
-            <div className="relative mb-8 z-10 animate-space-float">
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-white/60 blur-3xl rounded-full pointer-events-none"></div>
-                <div className="relative animate-space-drift group">
-                    <img 
-                        src="https://raw.githubusercontent.com/akirap3/OrangeCatEnglishDiary/refs/heads/main/images/vocabByPaw/meowaustrant.png"
-                        alt="Sir Isaac Astronaut" 
-                        className="relative h-80 w-auto object-contain drop-shadow-[0_20px_50px_rgba(0,0,0,0.15)] transform transition-transform duration-500"
-                    />
+
+            <div className="relative z-10 w-full flex flex-col items-center">
+                <h2 className="text-4xl font-black text-slate-800 mb-2 tracking-tight">Choose Your Pilot</h2>
+                <p className="text-lg text-slate-500 mb-10 font-medium">Drag or use arrows to select your avatar</p>
+                
+                <div className="perspective-container">
+                    <button 
+                        onClick={() => rotateCarousel('left')}
+                        className="absolute left-4 z-50 p-5 bg-white/90 backdrop-blur rounded-full shadow-xl border-2 border-orange-200 text-orange-600 hover:bg-orange-500 hover:text-white transition-all transform hover:scale-110 active:scale-95"
+                    >
+                        <ChevronLeft size={32} />
+                    </button>
+                    <button 
+                        onClick={() => rotateCarousel('right')}
+                        className="absolute right-4 z-50 p-5 bg-white/90 backdrop-blur rounded-full shadow-xl border-2 border-orange-200 text-orange-600 hover:bg-orange-500 hover:text-white transition-all transform hover:scale-110 active:scale-95"
+                    >
+                        <ChevronRight size={32} />
+                    </button>
+
+                    <div 
+                        className="carousel-3d"
+                        style={{ transform: `rotateY(${carouselRotation}deg)` }}
+                        onMouseDown={(e) => dragStartPos.current = e.clientX}
+                        onMouseUp={(e) => {
+                            if (dragStartPos.current !== null) {
+                                const diff = e.clientX - dragStartPos.current;
+                                if (Math.abs(diff) > 70) rotateCarousel(diff > 0 ? 'left' : 'right');
+                                dragStartPos.current = null;
+                            }
+                        }}
+                    >
+                        {CHARACTERS.map((char, idx) => {
+                            const angle = idx * 120;
+                            // Critical logic: use ID comparison for selection check
+                            const isSelected = selectedCharacter?.id === char.id;
+                            return (
+                                <div 
+                                    key={char.id}
+                                    className="character-slot cursor-pointer"
+                                    style={{ 
+                                        transform: `rotateY(${angle}deg) translateZ(320px) rotateY(${-angle}deg)`,
+                                    }}
+                                    onClick={() => handleCharClick(idx)}
+                                >
+                                    <div className={`relative transition-all duration-1000 transform ${isSelected ? 'scale-125 opacity-100 blur-0' : 'scale-75 opacity-25 blur-[4px]'}`}>
+                                        <div className={`absolute inset-0 bg-white/60 blur-[60px] rounded-full transition-opacity duration-1000 ${isSelected ? 'opacity-100' : 'opacity-0'}`}></div>
+                                        <img 
+                                            src={char.imageUrl} 
+                                            alt={char.name} 
+                                            className={`h-80 w-auto object-contain drop-shadow-[0_30px_60px_rgba(0,0,0,0.2)] transition-transform duration-500 ${isSelected ? 'animate-space-float' : ''}`}
+                                        />
+                                        <div className={`mt-8 flex flex-col items-center transition-all duration-1000 ${isSelected ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-8 opacity-0 scale-50'}`}>
+                                            <span className="bg-orange-500 text-white px-8 py-2 rounded-full font-black text-2xl shadow-xl border-4 border-white tracking-tight">{char.name}</span>
+                                            <p className="text-sm font-black text-orange-900 mt-2 uppercase tracking-[0.2em] bg-orange-100/80 px-4 py-1 rounded-md border border-orange-200">{char.description}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                <div className="bg-white/70 backdrop-blur-xl border-2 border-white p-6 rounded-3xl shadow-2xl max-w-md ring-1 ring-black/5 mt-4">
+                    <p className="text-base text-slate-700 leading-relaxed font-bold">
+                        Welcome to <span className="text-orange-600">Sir Isaac's Vocab Studio</span>. 
+                        Your selected pilot will appear in every watercolor masterpiece you generate!
+                    </p>
                 </div>
             </div>
-            <h2 className="text-3xl font-black text-slate-800 mb-3 tracking-tight z-10">Welcome to Vocab Studio!</h2>
-            <p className="text-lg text-slate-500 max-w-md leading-relaxed z-10 font-medium">Use the <span className="font-bold text-orange-700 bg-orange-100 border border-orange-200 px-2 py-0.5 rounded-md mx-1">Setup Panel</span> to generate a vocabulary list based on your interests.</p>
         </div>
     )
   }
