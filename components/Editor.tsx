@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { VocabItem, AppMode } from '../types';
 import { generateImageContent } from '../services/geminiService';
@@ -13,17 +14,18 @@ interface EditorProps {
   activeCellIndex?: number;
   onActiveCellChange?: (index: number) => void;
   appMode?: AppMode;
+  onImageCacheChange?: (cache: Record<number, string>) => void;
+  onStitchedImageChange?: (img: string | null) => void;
 }
 
-// Types for Grid State
 interface GridCellData {
   id: string;
   imageSrc: string | null;
   isLoading: boolean;
   prompt: string; 
   wordId: number; 
-  showWordInfo: boolean; // Controls Word, Phonetic, Definition
-  showSentences: boolean; // Controls English/Target Sentences
+  showWordInfo: boolean;
+  showSentences: boolean;
 }
 
 interface DividerConfig {
@@ -33,7 +35,6 @@ interface DividerConfig {
     thickness: number;
 }
 
-// Custom Icons with consistent 2px gaps and alignment
 const Icons = {
     Single: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
@@ -92,8 +93,6 @@ const LAYOUTS = [
   { id: 6, name: 'Grid 9', count: 9, icon: Icons.Grid9 },
 ];
 
-// --- CANVAS HELPERS ---
-
 const drawRoundedRect = (ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number, fillStyle: string) => {
     ctx.beginPath();
     ctx.moveTo(x + radius, y);
@@ -114,7 +113,6 @@ const getLines = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
     const words = text.split(' ');
     let tempLines: string[] = [];
     let currentLine = words[0];
-
     for (let i = 1; i < words.length; i++) {
         const word = words[i];
         const width = ctx.measureText(currentLine + " " + word).width;
@@ -126,7 +124,6 @@ const getLines = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
         }
     }
     if (currentLine) tempLines.push(currentLine);
-
     const finalLines: string[] = [];
     tempLines.forEach(line => {
         if (ctx.measureText(line).width > maxWidth) {
@@ -144,7 +141,6 @@ const getLines = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
             finalLines.push(line);
         }
     });
-
     return finalLines;
 };
 
@@ -168,23 +164,19 @@ const drawCellContent = (
         }
         ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
     }
-
     const effectiveDimension = Math.min(w, h * 1.4); 
     const scale = effectiveDimension / 1000;
-
     if (cell.showWordInfo && wordItem) {
         const padding = 16 * scale;
         const wordSize = Math.max(24, 56 * scale); 
         const phoneticSize = Math.max(12, 28 * scale);
         const defSize = Math.max(16, 30 * scale);
         const lineHeight = 1.4;
-
         ctx.font = `bold ${defSize}px "Noto Sans TC", sans-serif`;
         const defLines = getLines(ctx, wordItem.definition, w - (padding * 2));
         const defLineHeight = defSize * lineHeight;
         const totalContentHeight = (wordSize * 1.1) + (10 * scale) + (defLines.length * defLineHeight);
         const boxHeight = totalContentHeight + (padding * 1.5);
-
         drawRoundedRect(ctx, x, y, w, boxHeight, 0, 'rgba(255, 255, 255, 0.9)');
         ctx.textAlign = 'center';
         const centerX = x + (w / 2);
@@ -211,7 +203,6 @@ const drawCellContent = (
             ctx.fillText(line, centerX, currentY - (defLineHeight * 0.25)); 
         });
     }
-
     if (cell.showSentences && wordItem) {
         const padding = 16 * scale;
         const sentSize = Math.max(14, 28 * scale); 
@@ -261,15 +252,13 @@ export const Editor: React.FC<EditorProps> = ({
     onGridUpdate,
     activeCellIndex = 0,
     onActiveCellChange = () => {},
-    appMode = 'vocab'
+    appMode = 'vocab',
+    onImageCacheChange,
+    onStitchedImageChange
 }) => {
-  // State
   const [cells, setCells] = useState<GridCellData[]>([]);
   const cellsRef = useRef<GridCellData[]>([]);
-
-  useEffect(() => {
-      cellsRef.current = cells;
-  }, [cells]);
+  useEffect(() => { cellsRef.current = cells; }, [cells]);
 
   const layoutPersistence = useRef<Record<number, GridCellData[]>>({});
   const prevLayoutId = useRef<number>(layoutId);
@@ -277,17 +266,15 @@ export const Editor: React.FC<EditorProps> = ({
   const [starsFar] = useState(() => generateStars(40));
   const [starsMid] = useState(() => generateStars(20));
   const [starsNear] = useState(() => generateStars(10));
-  const imageCache = useRef<Map<number, string>>(new Map());
+  
+  const imageCacheRef = useRef<Map<number, string>>(new Map());
   const [magicPrompt, setMagicPrompt] = useState("");
   const [applyToAll, setApplyToAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stitchedImage, setStitchedImage] = useState<string | null>(null);
   const [isStitching, setIsStitching] = useState(false);
   const [dividerConfig, setDividerConfig] = useState<DividerConfig>({
-      show: false,
-      color: '#ffffff',
-      style: 'solid',
-      thickness: 20
+      show: false, color: '#ffffff', style: 'solid', thickness: 20
   });
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
@@ -298,27 +285,19 @@ export const Editor: React.FC<EditorProps> = ({
 
   useEffect(() => {
     if (appMode === 'vocab' && vocabItems.length === 0) return;
-
     if (appMode === 'collage') {
         if (prevLayoutId.current !== undefined && prevLayoutId.current !== layoutId) {
              layoutPersistence.current[prevLayoutId.current] = [...cellsRef.current];
         }
-
         const savedLayoutData = layoutPersistence.current[layoutId];
         let newCells: GridCellData[] = [];
-        
         if (savedLayoutData && savedLayoutData.length === gridAssignments.length) {
             newCells = [...savedLayoutData];
         } else {
              for (let i = 0; i < gridAssignments.length; i++) {
                 newCells.push({
                     id: `cell-collage-${i}-${layoutId}-${Date.now()}`,
-                    imageSrc: null,
-                    isLoading: false,
-                    prompt: "",
-                    wordId: 0,
-                    showWordInfo: false,
-                    showSentences: false
+                    imageSrc: null, isLoading: false, prompt: "", wordId: 0, showWordInfo: false, showSentences: false
                 });
             }
         }
@@ -332,23 +311,16 @@ export const Editor: React.FC<EditorProps> = ({
                 let existingCell: GridCellData | undefined;
                 const existingIndex = prevCells.findIndex(c => c.wordId === wordId && wordId !== 0);
                 if (existingIndex !== -1) existingCell = prevCells[existingIndex];
-
                 let cachedImage = null;
-                if (wordId !== 0 && imageCache.current.has(wordId)) {
-                    cachedImage = imageCache.current.get(wordId)!;
+                if (wordId !== 0 && imageCacheRef.current.has(wordId)) {
+                    cachedImage = imageCacheRef.current.get(wordId)!;
                 }
-
                 if (existingCell) {
                      newCells.push({ ...existingCell, id: `cell-${wordId}-${i}` });
                 } else {
                      newCells.push({
                         id: `cell-${wordId}-${i}`,
-                        imageSrc: cachedImage, 
-                        isLoading: false,
-                        prompt: "",
-                        wordId: wordId,
-                        showWordInfo: false, 
-                        showSentences: false 
+                        imageSrc: cachedImage, isLoading: false, prompt: "", wordId: wordId, showWordInfo: false, showSentences: false 
                      });
                 }
             }
@@ -357,7 +329,17 @@ export const Editor: React.FC<EditorProps> = ({
         prevLayoutId.current = layoutId;
     }
     setStitchedImage(null); 
+    onStitchedImageChange?.(null);
   }, [gridAssignments, vocabItems, appMode, layoutId]); 
+
+  // Notify parent of image changes
+  useEffect(() => {
+      if (onImageCacheChange) {
+          const cache: Record<number, string> = {};
+          imageCacheRef.current.forEach((val, key) => { cache[key] = val; });
+          onImageCacheChange(cache);
+      }
+  }, [cells]);
 
   const getTargetAspectRatio = (layout: number, idx: number): string => {
       if (layout === 1) return "9:16";
@@ -426,9 +408,8 @@ export const Editor: React.FC<EditorProps> = ({
       if(!cell || !cell.imageSrc) return;
       const item = vocabItems.find(v => v.id === cell.wordId);
       const filename = `${item?.word || 'image'}.png`;
-      let downloadUrl = cell.imageSrc;
       const canvas = await renderCellToCanvas(cell, item!, layoutId, index);
-      if (canvas) downloadUrl = canvas.toDataURL('image/png');
+      const downloadUrl = canvas ? canvas.toDataURL('image/png') : cell.imageSrc;
       const link = document.createElement('a');
       link.href = downloadUrl;
       link.download = filename;
@@ -453,9 +434,7 @@ export const Editor: React.FC<EditorProps> = ({
               btn.style.backgroundColor = '#10b981';
               setTimeout(() => { btn.style.backgroundColor = originalColor }, 1000);
           }
-      } catch (err) {
-          console.error("Copy failed", err);
-      }
+      } catch (err) { console.error("Copy failed", err); }
   };
 
   const handleGenerateCell = async (index: number, mode: 'create' | 'edit') => {
@@ -485,34 +464,27 @@ export const Editor: React.FC<EditorProps> = ({
   const handleClearCell = (index: number) => {
       const cell = cells[index];
       if (cell && cell.wordId && appMode === 'vocab') {
-          imageCache.current.delete(cell.wordId);
+          imageCacheRef.current.delete(cell.wordId);
       }
       updateCell(index, { imageSrc: null });
   };
 
   const handleClearAllImages = (e: React.MouseEvent) => {
       e.stopPropagation(); 
-      if (window.confirm("確定要清空當前版面上所有的圖片嗎？此操作將同時移除快取。")) {
-          // 1. 徹底清空快取
-          if (appMode === 'vocab') {
-              imageCache.current.clear();
-          }
-          if (appMode === 'collage') {
-              // 直接清空當前 Layout 的持久化儲存
-              layoutPersistence.current[layoutId] = [];
-          }
-
-          // 2. 更新 State 並強制重設 ID (確保元件重新渲染)
-          setCells(prev => prev.map((c, i) => ({ 
-              ...c, 
-              imageSrc: null, 
-              isLoading: false,
-              id: `cell-reset-${i}-${layoutId}-${Date.now()}` // 重新生成 ID 強制渲染
+      if (window.confirm("確定要清空畫布上的所有內容嗎？")) {
+          imageCacheRef.current.clear();
+          layoutPersistence.current = {}; 
+          const emptyAssignments = new Array(gridAssignments.length).fill(0);
+          onGridUpdate([...emptyAssignments]);
+          const forceResetToken = Date.now();
+          setCells(prev => prev.map((cell, i) => ({
+              id: `cell-cleared-${i}-${layoutId}-${forceResetToken}`,
+              imageSrc: null, wordId: 0, isLoading: false, prompt: "", showWordInfo: false, showSentences: false
           })));
-
-          // 3. 清除 UI 狀態
           setStitchedImage(null); 
+          onStitchedImageChange?.(null);
           setError(null);
+          setMagicPrompt("");
       }
   };
 
@@ -558,8 +530,8 @@ export const Editor: React.FC<EditorProps> = ({
         if (updates.imageSrc !== undefined && appMode === 'vocab') {
              const wordId = newCells[index].wordId;
              if (wordId) {
-                 if (updates.imageSrc) imageCache.current.set(wordId, updates.imageSrc);
-                 else imageCache.current.delete(wordId);
+                 if (updates.imageSrc) imageCacheRef.current.set(wordId, updates.imageSrc);
+                 else imageCacheRef.current.delete(wordId);
              }
         }
         return newCells;
@@ -673,12 +645,11 @@ export const Editor: React.FC<EditorProps> = ({
                     break;
             }
         }
-        setStitchedImage(canvas.toDataURL('image/png'));
-    } catch (e) {
-        setError("Failed to create stitched layout.");
-    } finally {
-        setIsStitching(false);
-    }
+        const result = canvas.toDataURL('image/png');
+        setStitchedImage(result);
+        onStitchedImageChange?.(result);
+    } catch (e) { setError("Failed to create stitched layout."); }
+    finally { setIsStitching(false); }
   };
 
   const getGridClasses = () => {
@@ -917,11 +888,11 @@ export const Editor: React.FC<EditorProps> = ({
                     <div className="flex items-center gap-2">
                         <button
                             onClick={handleClearAllImages}
-                            className="flex items-center gap-2 px-6 py-2.5 bg-white border-2 border-red-200 hover:border-red-500 hover:bg-red-50 text-red-500 hover:text-red-700 rounded-xl font-black transition-all shadow-sm active:scale-95 group relative overflow-hidden"
+                            className="flex items-center gap-2 px-6 py-2 bg-white border-2 border-gray-900 rounded-xl font-bold text-red-500 hover:bg-red-50 active:scale-95 transition-all shadow-sm group"
                             title="Reset Canvas"
                         >
-                           <RotateCcw size={18} className="group-hover:-rotate-180 transition-transform duration-500 ease-in-out" />
-                           <span className="text-sm tracking-tight uppercase">Clear Canvas</span>
+                           <RotateCcw size={16} className="group-hover:-rotate-180 transition-transform duration-500" />
+                           <span className="text-xs tracking-wider uppercase font-black">Clear Canvas</span>
                         </button>
                     </div>
                 </div>

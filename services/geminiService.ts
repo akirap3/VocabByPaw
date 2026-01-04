@@ -1,21 +1,12 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { VocabGenerationParams, VocabItem } from "../types";
 
-// Initialize the Gemini API client
-// Note: API Key must be provided via process.env.API_KEY
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const IMAGE_MODEL_NAME = 'gemini-2.5-flash-image';
 const TEXT_MODEL_NAME = 'gemini-3-flash-preview';
 
-/**
- * Generates or edits an image using Gemini 2.5 Flash Image.
- * 
- * @param prompt The text description for generation or editing instructions.
- * @param inputImageBase64 Optional base64 string of an existing image to edit.
- * @param aspectRatio The desired aspect ratio for the generated image (e.g., "1:1", "16:9", "9:16").
- * @returns The base64 string of the generated image.
- */
 export const generateImageContent = async (
   prompt: string,
   inputImageBase64?: string,
@@ -23,38 +14,25 @@ export const generateImageContent = async (
 ): Promise<string | null> => {
   try {
     const parts: any[] = [];
-
-    // If we have an input image, we add it to the parts (Editing mode)
     if (inputImageBase64) {
-      // Remove data URL prefix if present for clean base64
       const cleanBase64 = inputImageBase64.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, '');
-      
       parts.push({
         inlineData: {
-          mimeType: 'image/png', // Assuming PNG for simplicity, usually safe for standard base64 from canvas/input
+          mimeType: 'image/png',
           data: cleanBase64
         }
       });
     }
-
-    // Add the text prompt
     parts.push({ text: prompt });
 
-    // Call the API
     const response = await ai.models.generateContent({
       model: IMAGE_MODEL_NAME,
-      contents: {
-        parts: parts
-      },
-      // Configuration can be tuned here
+      contents: { parts: parts },
       config: {
-        imageConfig: {
-            aspectRatio: aspectRatio
-        }
+        imageConfig: { aspectRatio: aspectRatio }
       }
     });
 
-    // Extract the image from the response
     if (response.candidates && response.candidates.length > 0) {
       const parts = response.candidates[0].content?.parts;
       if (parts) {
@@ -65,36 +43,30 @@ export const generateImageContent = async (
         }
       }
     }
-
     throw new Error("No image data found in response");
-
   } catch (error) {
     console.error("Gemini API Error:", error);
     throw error;
   }
 };
 
-/**
- * Generates a list of vocabulary items based on user input (manual list or topic)
- */
-export const generateVocabList = async (params: VocabGenerationParams): Promise<VocabItem[]> => {
+export const generateVocabList = async (params: VocabGenerationParams): Promise<{ theme: string, items: VocabItem[] }> => {
     try {
         let systemInstruction = `You are a professional linguist and vocabulary teacher. 
-        Your task is to generate structured vocabulary cards.
+        Your task is to generate structured vocabulary cards and a "Theme Sentence" that summarizes the collection.
         The user wants the definitions and target sentences in this language: ${params.targetLanguage}.
         Ensure the 'phonetic' field uses KK Phonetic symbols.
-        Ensure the 'imagePrompt' describes a "Soft watercolor and ink illustration" featuring a chubby orange tabby cat with round glasses (Sir Isaac) acting out the word. The style should be whimsical, cozy, and detailed, like a children's storybook.`;
+        Ensure the 'imagePrompt' describes a "Soft watercolor and ink illustration" featuring a chubby orange tabby cat with round glasses (Sir Isaac) acting out the word.
+        Include a 'theme' property which is a creative 1-sentence summary or title for this set of words.`;
 
         let userPrompt = "";
-
         if (params.mode === 'manual') {
-            userPrompt = `Generate detailed vocabulary cards for the following words: ${params.input}. 
-            Provide exactly one card per word provided.`;
+            userPrompt = `Generate detailed vocabulary cards and a summary theme sentence for the following words: ${params.input}.`;
         } else {
             const levels = params.proficiencyLevels.length > 0 ? params.proficiencyLevels.join(", ") : "General";
-            userPrompt = `Generate 9 vocabulary words related to the topic/prompt: "${params.input}".
+            userPrompt = `Generate 9 vocabulary words related to the topic: "${params.input}".
             Target Proficiency Levels: ${levels}.
-            Select words that match these proficiency levels.`;
+            Also provide a creative theme sentence.`;
         }
 
         const response = await ai.models.generateContent({
@@ -104,31 +76,36 @@ export const generateVocabList = async (params: VocabGenerationParams): Promise<
                 systemInstruction: systemInstruction,
                 responseMimeType: "application/json",
                 responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            word: { type: Type.STRING },
-                            phonetic: { type: Type.STRING, description: "KK Phonetic transcription" },
-                            definition: { type: Type.STRING, description: `Definition in ${params.targetLanguage}` },
-                            englishSentence: { type: Type.STRING },
-                            targetSentence: { type: Type.STRING, description: `Sentence translated to ${params.targetLanguage}` },
-                            imagePrompt: { type: Type.STRING, description: "A visual description for an image generator" }
-                        },
-                        required: ["word", "phonetic", "definition", "englishSentence", "targetSentence", "imagePrompt"]
-                    }
+                    type: Type.OBJECT,
+                    properties: {
+                        theme: { type: Type.STRING, description: "A creative summary sentence for the collection" },
+                        items: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    word: { type: Type.STRING },
+                                    phonetic: { type: Type.STRING, description: "KK Phonetic transcription" },
+                                    definition: { type: Type.STRING, description: `Definition in ${params.targetLanguage}` },
+                                    englishSentence: { type: Type.STRING },
+                                    targetSentence: { type: Type.STRING, description: `Sentence translated to ${params.targetLanguage}` },
+                                    imagePrompt: { type: Type.STRING, description: "A visual description for an image generator" }
+                                },
+                                required: ["word", "phonetic", "definition", "englishSentence", "targetSentence", "imagePrompt"]
+                            }
+                        }
+                    },
+                    required: ["theme", "items"]
                 }
             }
         });
 
         const jsonString = response.text;
         if (!jsonString) throw new Error("Empty response from AI");
-
         const parsedData = JSON.parse(jsonString);
         
-        // Map to ensure IDs are added (using timestamp + index for uniqueness)
         const timestamp = Date.now();
-        return parsedData.map((item: any, index: number) => ({
+        const items = parsedData.items.map((item: any, index: number) => ({
             id: timestamp + index,
             word: item.word,
             phonetic: item.phonetic,
@@ -138,6 +115,7 @@ export const generateVocabList = async (params: VocabGenerationParams): Promise<
             imagePrompt: item.imagePrompt
         }));
 
+        return { theme: parsedData.theme, items };
     } catch (error) {
         console.error("Gemini Vocab Generation Error:", error);
         throw error;
