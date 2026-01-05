@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { VocabItem, AppMode, Character, CHARACTERS } from '../types';
 import { generateImageContent } from '../services/geminiService';
+import { deleteImage } from '../services/imageCacheDB';
 import { RefreshCw, Wand2, Download, Layers, X, Image as ImageIcon, Upload, Check, MessageSquare, Type, Trash2, Settings2, Minus, MoreHorizontal, GripHorizontal, Copy, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface EditorProps {
@@ -14,8 +15,8 @@ interface EditorProps {
   activeCellIndex?: number;
   onActiveCellChange?: (index: number) => void;
   appMode?: AppMode;
-    initialImageCache?: Record<number, string>;
-  onImageCacheChange?: (cache: Record<number, string>) => void;
+    initialImageCache?: Record<string, string>;
+    onImageCacheChange?: (cache: Record<string, string>) => void;
   onStitchedImageChange?: (img: string | null) => void;
   selectedCharacter?: Character;
   onCharacterChange?: (char: Character) => void;
@@ -282,30 +283,56 @@ export const Editor: React.FC<EditorProps> = ({
     const prevAppMode = useRef<AppMode>(appMode);
   const [starsFar] = useState(() => generateStars(40));
   
-    // Separate image caches for each mode
-    // Initialize vocabImageCacheRef from initialImageCache (from localStorage)
-    const initialVocabCache = React.useMemo(() => {
-        const map = new Map<number, string>();
-        Object.entries(initialImageCache).forEach(([key, value]) => {
-            map.set(Number(key), value as string);
-        });
-        return map;
-    }, []); // Only compute once on mount
+    // Separate image caches for each mode - now using string keys
+    // vocab: "vocab_123", collage: "collage_0"
+    const imageCacheRef = useRef<Map<string, string>>(new Map());
 
-    const vocabImageCacheRef = useRef<Map<number, string>>(initialVocabCache);
-    const collageImageCacheRef = useRef<Map<number, string>>(new Map());
-    const imageCacheRef = appMode === 'vocab' ? vocabImageCacheRef : collageImageCacheRef;
-
-    // Also update cache ref if initialImageCache changes (e.g. on first render with saved data)
-    const initialCacheLoaded = useRef(false);
+    // Update cache ref when initialImageCache changes (after async IndexedDB load)
+    // Also restore images to cells that are already rendered
     useEffect(() => {
-        if (!initialCacheLoaded.current && Object.keys(initialImageCache).length > 0) {
+        if (Object.keys(initialImageCache).length > 0) {
+            // Update the ref
             Object.entries(initialImageCache).forEach(([key, value]) => {
-                vocabImageCacheRef.current.set(Number(key), value as string);
+                imageCacheRef.current.set(key, value as string);
             });
-            initialCacheLoaded.current = true;
+
+            // Restore vocab images to cells
+            setVocabCells(prevCells => {
+                if (prevCells.length === 0) return prevCells;
+                let hasChanges = false;
+                const newCells = prevCells.map(cell => {
+                    if (cell.wordId && !cell.imageSrc) {
+                        const cacheKey = `vocab_${cell.wordId}`;
+                        const cachedImage = imageCacheRef.current.get(cacheKey);
+                        if (cachedImage) {
+                            hasChanges = true;
+                            return { ...cell, imageSrc: cachedImage };
+                        }
+                    }
+                    return cell;
+                });
+                return hasChanges ? newCells : prevCells;
+            });
+
+            // Restore collage images to cells
+            setCollageCells(prevCells => {
+                if (prevCells.length === 0) return prevCells;
+                let hasChanges = false;
+                const newCells = prevCells.map((cell, idx) => {
+                    if (!cell.imageSrc) {
+                        const cacheKey = `collage_${layoutId}_${idx}`;
+                        const cachedImage = imageCacheRef.current.get(cacheKey);
+                        if (cachedImage) {
+                            hasChanges = true;
+                            return { ...cell, imageSrc: cachedImage };
+                        }
+                    }
+                    return cell;
+                });
+                return hasChanges ? newCells : prevCells;
+            });
         }
-    }, [initialImageCache]);
+    }, [initialImageCache, layoutId]);
   const [magicPrompt, setMagicPrompt] = useState("");
   const [applyToAll, setApplyToAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -358,9 +385,12 @@ export const Editor: React.FC<EditorProps> = ({
             newCells = [...savedLayoutData];
         } else {
              for (let i = 0; i < gridAssignments.length; i++) {
+                 // Try to restore cached image for collage
+                 const cacheKey = `collage_${layoutId}_${i}`;
+                 const cachedImage = imageCacheRef.current.get(cacheKey) || null;
                 newCells.push({
                     id: `cell-collage-${i}-${layoutId}-${Date.now()}`,
-                    imageSrc: null, isLoading: false, prompt: "", wordId: 0, showWordInfo: false, showSentences: false
+                    imageSrc: cachedImage, isLoading: false, prompt: "", wordId: 0, showWordInfo: false, showSentences: false
                 });
             }
         }
@@ -374,8 +404,9 @@ export const Editor: React.FC<EditorProps> = ({
                 const existingIndex = prevCells.findIndex(c => c.wordId === wordId && wordId !== 0);
                 if (existingIndex !== -1) existingCell = prevCells[existingIndex];
                 let cachedImage = null;
-                if (wordId !== 0 && vocabImageCacheRef.current.has(wordId)) {
-                    cachedImage = vocabImageCacheRef.current.get(wordId)!;
+                const cacheKey = `vocab_${wordId}`;
+                if (wordId !== 0 && imageCacheRef.current.has(cacheKey)) {
+                    cachedImage = imageCacheRef.current.get(cacheKey)!;
                 }
                 if (existingCell) {
                      newCells.push({ ...existingCell, id: `cell-${wordId}-${i}` });
@@ -397,13 +428,13 @@ export const Editor: React.FC<EditorProps> = ({
   }, [gridAssignments, vocabItems, appMode, layoutId]); 
 
   useEffect(() => {
-      // Only export vocab image cache (collage images are not cached by wordId)
-      if (onImageCacheChange && appMode === 'vocab') {
-          const cache: Record<number, string> = {};
-          vocabImageCacheRef.current.forEach((val, key) => { cache[key] = val; });
+      // Export all images (both vocab and collage) to parent
+      if (onImageCacheChange) {
+          const cache: Record<string, string> = {};
+          imageCacheRef.current.forEach((val, key) => { cache[key] = val; });
           onImageCacheChange(cache);
       }
-  }, [vocabCells, appMode]);
+  }, [vocabCells, collageCells, appMode]);
 
   const rotateCarousel = (direction: 'left' | 'right') => {
       const totalChars = CHARACTERS.length;
@@ -574,8 +605,13 @@ export const Editor: React.FC<EditorProps> = ({
 
   const handleClearCell = (index: number) => {
       const cell = cells[index];
-      if (cell && cell.wordId && appMode === 'vocab') {
-          vocabImageCacheRef.current.delete(cell.wordId);
+      if (cell) {
+          const cacheKey = appMode === 'vocab'
+              ? `vocab_${cell.wordId}`
+              : `collage_${layoutId}_${index}`;
+          imageCacheRef.current.delete(cacheKey);
+          // Immediately delete from IndexedDB
+          deleteImage(cacheKey);
       }
       updateCell(index, { imageSrc: null });
   };
@@ -584,18 +620,24 @@ export const Editor: React.FC<EditorProps> = ({
       e.stopPropagation(); 
       if (window.confirm("確定要清空畫布上的所有內容嗎？")) {
           if (appMode === 'vocab') {
-              // Only clear vocab-related data
-              // Clear image cache for currently assigned words only
+              // Clear vocab-related cache
               cells.forEach(cell => {
                   if (cell.wordId) {
-                      vocabImageCacheRef.current.delete(cell.wordId);
+                      const cacheKey = `vocab_${cell.wordId}`;
+                      imageCacheRef.current.delete(cacheKey);
+                      deleteImage(cacheKey); // Immediately delete from IndexedDB
                   }
               });
               // Reset grid assignments to empty
               const emptyAssignments = new Array(gridAssignments.length).fill(0);
               onGridUpdate([...emptyAssignments]);
           } else {
-              // Collage mode: clear current layout persistence only
+              // Collage mode: clear collage images from cache
+              cells.forEach((_, idx) => {
+                  const cacheKey = `collage_${layoutId}_${idx}`;
+                  imageCacheRef.current.delete(cacheKey);
+                  deleteImage(cacheKey); // Immediately delete from IndexedDB
+              });
               delete collageLayoutPersistence.current[layoutId];
           }
 
@@ -645,12 +687,15 @@ export const Editor: React.FC<EditorProps> = ({
         const newCells = [...prev];
         if (!newCells[index]) return prev;
         newCells[index] = { ...newCells[index], ...updates };
-          // Only cache images for vocab mode using vocab-specific cache
-        if (updates.imageSrc !== undefined && appMode === 'vocab') {
-             const wordId = newCells[index].wordId;
-             if (wordId) {
-                 if (updates.imageSrc) vocabImageCacheRef.current.set(wordId, updates.imageSrc);
-                 else vocabImageCacheRef.current.delete(wordId);
+          // Cache images with appropriate key prefix
+          if (updates.imageSrc !== undefined) {
+              const cacheKey = appMode === 'vocab'
+                  ? `vocab_${newCells[index].wordId}`
+                  : `collage_${layoutId}_${index}`;
+              if (updates.imageSrc) {
+                  imageCacheRef.current.set(cacheKey, updates.imageSrc);
+              } else {
+                  imageCacheRef.current.delete(cacheKey);
              }
         }
         return newCells;

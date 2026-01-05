@@ -8,6 +8,7 @@ import { ProtectedRoute } from './components/ProtectedRoute.tsx';
 import { VocabItem, VocabGenerationParams, AppMode, Character, CHARACTERS } from './types.ts';
 import { Sparkles, Menu, X, Settings, Image, BookType, LogOut, ChevronLeft, ChevronRight } from 'lucide-react';
 import { generateVocabList } from './services/geminiService.ts';
+import { getAllImages, saveAllImages, clearAllImages } from './services/imageCacheDB.ts';
 
 // --- Dashboard Component (Main Application) ---
 const STORAGE_KEYS = {
@@ -16,10 +17,14 @@ const STORAGE_KEYS = {
     selectedCharacter: 'vocabByPaw_selectedCharacter',
     vocabLayoutId: 'vocabByPaw_vocabLayoutId',
     vocabGridAssignments: 'vocabByPaw_vocabGridAssignments',
-    imageCache: 'vocabByPaw_imageCache',
+    imageCache: 'vocabByPaw_imageCache', // Legacy key - will migrate to IndexedDB
     collageLayoutId: 'vocabByPaw_collageLayoutId',
     collageGridAssignments: 'vocabByPaw_collageGridAssignments',
+    appMode: 'vocabByPaw_appMode',
 };
+
+// Flag to track if we've migrated localStorage cache to IndexedDB
+const MIGRATION_KEY = 'vocabByPaw_imageCacheMigrated';
 
 // Helper to safely parse JSON from localStorage
 const loadFromStorage = <T,>(key: string, defaultValue: T): T => {
@@ -33,7 +38,9 @@ const loadFromStorage = <T,>(key: string, defaultValue: T): T => {
 
 const Dashboard: React.FC = () => {
     const navigate = useNavigate();
-    const [appMode, setAppMode] = useState<AppMode>('vocab');
+    const [appMode, setAppMode] = useState<AppMode>(() =>
+        loadFromStorage(STORAGE_KEYS.appMode, 'vocab') as AppMode
+    );
   
     // Load initial state from localStorage
     const [vocabItems, setVocabItems] = useState<VocabItem[]>(() =>
@@ -55,6 +62,9 @@ const Dashboard: React.FC = () => {
         // Clear all app data from localStorage
         Object.values(STORAGE_KEYS).forEach(key => localStorage.removeItem(key));
         localStorage.removeItem('isAuthenticated');
+        localStorage.removeItem(MIGRATION_KEY);
+        // Clear IndexedDB image cache
+        clearAllImages();
         navigate('/');
     };
 
@@ -74,10 +84,10 @@ const Dashboard: React.FC = () => {
     );
   const [collageActiveCellIndex, setCollageActiveCellIndex] = useState(0);
 
-    const [imageCache, setImageCache] = useState<Record<number, string>>(() =>
-        loadFromStorage(STORAGE_KEYS.imageCache, {})
-    );
-  const [stitchedImage, setStitchedImage] = useState<string | null>(null);
+    // Image cache now uses IndexedDB with string keys - start empty, load async
+    const [imageCache, setImageCache] = useState<Record<string, string>>({});
+    const [imageCacheLoaded, setImageCacheLoaded] = useState(false);
+    const [stitchedImage, setStitchedImage] = useState<string | null>(null);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showInputPanel, setShowInputPanel] = useState(true);
@@ -116,9 +126,53 @@ const Dashboard: React.FC = () => {
         localStorage.setItem(STORAGE_KEYS.vocabGridAssignments, JSON.stringify(vocabGridAssignments));
     }, [vocabGridAssignments]);
 
+    // Load image cache from IndexedDB on mount
     useEffect(() => {
-        localStorage.setItem(STORAGE_KEYS.imageCache, JSON.stringify(imageCache));
-    }, [imageCache]);
+        const loadImageCache = async () => {
+            // Check if we need to migrate from localStorage (old number-keyed cache)
+            const migrated = localStorage.getItem(MIGRATION_KEY);
+            if (!migrated) {
+                const oldCache = loadFromStorage<Record<number, string>>(STORAGE_KEYS.imageCache, {});
+                if (Object.keys(oldCache).length > 0) {
+                    // Convert number keys to string keys with vocab_ prefix
+                    const stringKeyCache: Record<string, string> = {};
+                    Object.entries(oldCache).forEach(([key, val]) => {
+                        stringKeyCache[`vocab_${key}`] = val;
+                    });
+                    await saveAllImages(stringKeyCache);
+                    localStorage.removeItem(STORAGE_KEYS.imageCache);
+                }
+                localStorage.setItem(MIGRATION_KEY, 'true');
+            }
+
+            const cache = await getAllImages();
+            setImageCache(cache);
+            setImageCacheLoaded(true);
+        };
+        loadImageCache();
+    }, []);
+
+    // Persist appMode to localStorage
+    useEffect(() => {
+        localStorage.setItem(STORAGE_KEYS.appMode, JSON.stringify(appMode));
+    }, [appMode]);
+
+    // Save image cache to IndexedDB whenever it changes (debounced)
+    const imageCacheSaveTimeout = useRef<NodeJS.Timeout | null>(null);
+    useEffect(() => {
+        if (!imageCacheLoaded) return; // Don't save until initial load is done
+        if (imageCacheSaveTimeout.current) {
+            clearTimeout(imageCacheSaveTimeout.current);
+        }
+        imageCacheSaveTimeout.current = setTimeout(() => {
+            saveAllImages(imageCache);
+        }, 500); // Debounce 500ms
+        return () => {
+            if (imageCacheSaveTimeout.current) {
+                clearTimeout(imageCacheSaveTimeout.current);
+            }
+        };
+    }, [imageCache, imageCacheLoaded]);
 
     useEffect(() => {
         localStorage.setItem(STORAGE_KEYS.collageLayoutId, JSON.stringify(collageLayoutId));

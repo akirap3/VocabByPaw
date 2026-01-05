@@ -15,7 +15,7 @@ interface VocabListProps {
   activeCellIndex?: number;
   onUnselectAll?: () => void;
   onClose?: () => void;
-  imageCache: Record<number, string>;
+    imageCache: Record<string, string>;
   stitchedImage: string | null;
     selectedCharacter: Character;
     onCharacterChange: (char: Character) => void;
@@ -162,7 +162,7 @@ export const VocabList: React.FC<VocabListProps> = ({
     for (let i = 0; i < items.length; i++) {
         const item = items[i];
         const cleanPhonetic = item.phonetic.replace(/[\[\]]/g, '');
-        const imgDataRaw = imageCache[item.id];
+        const imgDataRaw = imageCache[`vocab_${item.id}`];
         
         let preparedImg = null;
         if (imgDataRaw) {
