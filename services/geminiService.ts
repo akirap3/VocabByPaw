@@ -1,8 +1,14 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
-import { VocabGenerationParams, VocabItem } from "../types";
+import { VocabGenerationParams, VocabItem } from "../types.ts";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Initialize lazily and check for API key
+const getAI = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    console.warn("Gemini API Key is missing from process.env.API_KEY. API calls will fail.");
+  }
+  return new GoogleGenAI({ apiKey: apiKey || "" });
+};
 
 const IMAGE_MODEL_NAME = 'gemini-2.5-flash-image';
 const TEXT_MODEL_NAME = 'gemini-3-flash-preview';
@@ -13,6 +19,7 @@ export const generateImageContent = async (
   aspectRatio: string = "1:1"
 ): Promise<string | null> => {
   try {
+    const ai = getAI();
     const parts: any[] = [];
     if (inputImageBase64) {
       const cleanBase64 = inputImageBase64.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, '');
@@ -29,7 +36,7 @@ export const generateImageContent = async (
       model: IMAGE_MODEL_NAME,
       contents: { parts: parts },
       config: {
-        imageConfig: { aspectRatio: aspectRatio }
+        imageConfig: { aspectRatio: aspectRatio as any }
       }
     });
 
@@ -52,23 +59,24 @@ export const generateImageContent = async (
 
 export const generateVocabList = async (params: VocabGenerationParams): Promise<{ theme: string, items: VocabItem[] }> => {
     try {
-        const charDesc = params.character?.promptSignature || "a chubby orange tabby cat with round glasses (Sir Isaac)";
+        const ai = getAI();
+        let systemInstruction = `You are an expert language teacher and a creative storyboard artist.
+        Your task is to generate vocabulary cards where the 'imagePrompt' perfectly illustrates the WORD and its EXAMPLE SENTENCE.
         
-        let systemInstruction = `You are a professional linguist and vocabulary teacher. 
-        Your task is to generate structured vocabulary cards and a "Theme Sentence" that summarizes the collection.
-        The user wants the definitions and target sentences in this language: ${params.targetLanguage}.
-        Ensure the 'phonetic' field uses KK Phonetic symbols.
-        Ensure the 'imagePrompt' describes a "Soft watercolor and ink illustration" featuring ${charDesc} acting out the word.
-        Include a 'theme' property which is a creative 1-sentence summary or title for this set of words.`;
+        CRITICAL ILLUSTRATION RULES for 'imagePrompt':
+        - Protagonist: Use the placeholder "[MASCOT]" for the main character.
+        - Style: "Soft watercolor and ink illustration, whimsical and warm".
+        - Clothing & Costume: [MASCOT] MUST wear clothes appropriate for the action or word context.
+        - Action & Props: [MASCOT] should be actively engaged in the scene.
+        
+        Target Language: ${params.targetLanguage}. Phonetic: KK. Theme: Creative summary.`;
 
         let userPrompt = "";
         if (params.mode === 'manual') {
-            userPrompt = `Generate detailed vocabulary cards and a summary theme sentence for the following words: ${params.input}.`;
+            userPrompt = `Generate vocabulary data for these words: ${params.input}.`;
         } else {
             const levels = params.proficiencyLevels.length > 0 ? params.proficiencyLevels.join(", ") : "General";
-            userPrompt = `Generate 9 vocabulary words related to the topic: "${params.input}".
-            Target Proficiency Levels: ${levels}.
-            Also provide a creative theme sentence.`;
+            userPrompt = `Generate 9 vocabulary words for the topic: "${params.input}" at ${levels} level.`;
         }
 
         const response = await ai.models.generateContent({
@@ -80,18 +88,18 @@ export const generateVocabList = async (params: VocabGenerationParams): Promise<
                 responseSchema: {
                     type: Type.OBJECT,
                     properties: {
-                        theme: { type: Type.STRING, description: "A creative summary sentence for the collection" },
+                        theme: { type: Type.STRING },
                         items: {
                             type: Type.ARRAY,
                             items: {
                                 type: Type.OBJECT,
                                 properties: {
                                     word: { type: Type.STRING },
-                                    phonetic: { type: Type.STRING, description: "KK Phonetic transcription" },
-                                    definition: { type: Type.STRING, description: `Definition in ${params.targetLanguage}` },
+                                    phonetic: { type: Type.STRING },
+                                    definition: { type: Type.STRING },
                                     englishSentence: { type: Type.STRING },
-                                    targetSentence: { type: Type.STRING, description: `Sentence translated to ${params.targetLanguage}` },
-                                    imagePrompt: { type: Type.STRING, description: "A visual description for an image generator" }
+                                    targetSentence: { type: Type.STRING },
+                                    imagePrompt: { type: Type.STRING }
                                 },
                                 required: ["word", "phonetic", "definition", "englishSentence", "targetSentence", "imagePrompt"]
                             }
@@ -103,7 +111,7 @@ export const generateVocabList = async (params: VocabGenerationParams): Promise<
         });
 
         const jsonString = response.text;
-        if (!jsonString) throw new Error("Empty response from AI");
+        if (!jsonString) throw new Error("Empty response");
         const parsedData = JSON.parse(jsonString);
         
         const timestamp = Date.now();
@@ -119,7 +127,7 @@ export const generateVocabList = async (params: VocabGenerationParams): Promise<
 
         return { theme: parsedData.theme, items };
     } catch (error) {
-        console.error("Gemini Vocab Generation Error:", error);
+        console.error("Gemini Error:", error);
         throw error;
     }
 }

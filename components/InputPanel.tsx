@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings, Sparkles, BookOpen, AlertCircle } from 'lucide-react';
+import { Settings, Sparkles, BookOpen, AlertCircle, Globe, MessageSquare, GraduationCap } from 'lucide-react';
 import { TOP_50_LANGUAGES, PROFICIENCY_LEVELS } from '../constants';
 import { InputMode, VocabGenerationParams } from '../types';
 
@@ -63,7 +63,7 @@ export const InputPanel: React.FC<InputPanelProps> = ({ onGenerate, isLoading })
 
       {/* Language Selector */}
       <div className="mb-6 relative">
-        <label className="block text-sm font-bold text-gray-900 mb-2">Target Language</label>
+        <label className="block text-sm font-bold text-gray-900 mb-2 flex items-center gap-1.5"><Globe size={14} className="text-orange-500" />Target Language</label>
         <div className="relative">
           <input
             type="text"
@@ -158,17 +158,18 @@ export const InputPanel: React.FC<InputPanelProps> = ({ onGenerate, isLoading })
       {/* Topic Mode Input */}
       {mode === 'topic' && (
         <div className="flex-1 flex flex-col">
-          <label className="block text-sm font-bold text-gray-900 mb-2">Topic or Theme</label>
+          <label className="block text-sm font-bold text-gray-900 mb-2 flex items-center gap-1.5"><MessageSquare size={14} className="text-orange-500" />Topic or Theme</label>
           <textarea
              disabled={isLoading}
-             rows={3}
+            rows={10}
              className={`w-full p-3 border border-gray-300 rounded-lg focus:border-orange-500 outline-none resize-y mb-4 bg-white text-gray-900 placeholder-gray-500 ${isLoading ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+            style={{ minHeight: '72px' }}
              placeholder="e.g. Cooking at home, Space exploration, Office politics..."
              value={topicInput}
              onChange={(e) => setTopicInput(e.target.value)}
           />
 
-          <label className="block text-sm font-bold text-gray-900 mb-2">Proficiency Level</label>
+          <label className="block text-sm font-bold text-gray-900 mb-2 flex items-center gap-1.5"><GraduationCap size={14} className="text-orange-500" />Proficiency Level</label>
           <div className="flex flex-wrap gap-2 mb-6">
             {PROFICIENCY_LEVELS.map(level => (
                 <button

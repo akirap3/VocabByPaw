@@ -14,6 +14,7 @@ interface EditorProps {
   activeCellIndex?: number;
   onActiveCellChange?: (index: number) => void;
   appMode?: AppMode;
+    initialImageCache?: Record<number, string>;
   onImageCacheChange?: (cache: Record<number, string>) => void;
   onStitchedImageChange?: (img: string | null) => void;
   selectedCharacter?: Character;
@@ -102,7 +103,7 @@ const drawRoundedRect = (ctx: CanvasRenderingContext2D, x: number, y: number, wi
     ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
     ctx.lineTo(x + width, y + height - radius);
     ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-    ctx.lineTo(x + radius, y + height);
+    ctx.lineTo(radius, y + height);
     ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
     ctx.lineTo(x, y + radius);
     ctx.quadraticCurveTo(x, y, x + radius, y);
@@ -255,20 +256,56 @@ export const Editor: React.FC<EditorProps> = ({
     activeCellIndex = 0,
     onActiveCellChange = (_index: number) => {},
     appMode = 'vocab',
+    initialImageCache = {},
     onImageCacheChange,
     onStitchedImageChange,
     selectedCharacter,
     onCharacterChange
 }) => {
-  const [cells, setCells] = useState<GridCellData[]>([]);
+    // Separate cells state for each mode
+    const [vocabCells, setVocabCells] = useState<GridCellData[]>([]);
+    const [collageCells, setCollageCells] = useState<GridCellData[]>([]);
+
+    // Get/set cells based on current mode
+    const cells = appMode === 'vocab' ? vocabCells : collageCells;
+    const setCells = appMode === 'vocab' ? setVocabCells : setCollageCells;
+
   const cellsRef = useRef<GridCellData[]>([]);
   useEffect(() => { cellsRef.current = cells; }, [cells]);
 
-  const layoutPersistence = useRef<Record<number, GridCellData[]>>({});
+    // Separate layout persistence for each mode
+    const vocabLayoutPersistence = useRef<Record<number, GridCellData[]>>({});
+    const collageLayoutPersistence = useRef<Record<number, GridCellData[]>>({});
+    const layoutPersistence = appMode === 'vocab' ? vocabLayoutPersistence : collageLayoutPersistence;
+
   const prevLayoutId = useRef<number>(layoutId);
+    const prevAppMode = useRef<AppMode>(appMode);
   const [starsFar] = useState(() => generateStars(40));
   
-  const imageCacheRef = useRef<Map<number, string>>(new Map());
+    // Separate image caches for each mode
+    // Initialize vocabImageCacheRef from initialImageCache (from localStorage)
+    const initialVocabCache = React.useMemo(() => {
+        const map = new Map<number, string>();
+        Object.entries(initialImageCache).forEach(([key, value]) => {
+            map.set(Number(key), value as string);
+        });
+        return map;
+    }, []); // Only compute once on mount
+
+    const vocabImageCacheRef = useRef<Map<number, string>>(initialVocabCache);
+    const collageImageCacheRef = useRef<Map<number, string>>(new Map());
+    const imageCacheRef = appMode === 'vocab' ? vocabImageCacheRef : collageImageCacheRef;
+
+    // Also update cache ref if initialImageCache changes (e.g. on first render with saved data)
+    const initialCacheLoaded = useRef(false);
+    useEffect(() => {
+        if (!initialCacheLoaded.current && Object.keys(initialImageCache).length > 0) {
+            Object.entries(initialImageCache).forEach(([key, value]) => {
+                vocabImageCacheRef.current.set(Number(key), value as string);
+            });
+            initialCacheLoaded.current = true;
+        }
+    }, [initialImageCache]);
   const [magicPrompt, setMagicPrompt] = useState("");
   const [applyToAll, setApplyToAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -279,19 +316,43 @@ export const Editor: React.FC<EditorProps> = ({
   });
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
-  // Derive visual rotation directly from selected character index to prevent sync bugs
-  const characterIndex = Math.max(0, CHARACTERS.findIndex(c => c.id === selectedCharacter?.id));
-  const carouselRotation = characterIndex * -120;
-  
+    const [carouselRotation, setCarouselRotation] = useState(() => {
+        const idx = Math.max(0, CHARACTERS.findIndex(c => c.id === selectedCharacter?.id));
+        return idx * -120;
+    });
+
+    const characterIndex = Math.max(0, CHARACTERS.findIndex(c => c.id === selectedCharacter?.id));
   const dragStartPos = useRef<number | null>(null);
+
+    useEffect(() => {
+        const currentTargetIndex = Math.max(0, CHARACTERS.findIndex(c => c.id === selectedCharacter?.id));
+        const currentAngleNormalized = ((-carouselRotation / 120) % CHARACTERS.length + CHARACTERS.length) % CHARACTERS.length;
+        if (Math.abs(currentAngleNormalized - currentTargetIndex) > 0.1) {
+            setCarouselRotation(currentTargetIndex * -120);
+        }
+    }, [selectedCharacter?.id]);
 
   useEffect(() => {
     if (appMode === 'vocab' && vocabItems.length === 0) return;
-    if (appMode === 'collage') {
-        if (prevLayoutId.current !== undefined && prevLayoutId.current !== layoutId) {
-             layoutPersistence.current[prevLayoutId.current] = [...cellsRef.current];
+
+      // Save cells when MODE changes (switching between vocab and collage)
+      if (prevAppMode.current !== appMode) {
+          // Save the PREVIOUS mode's cells before switching
+          if (prevAppMode.current === 'collage') {
+              collageLayoutPersistence.current[prevLayoutId.current] = [...collageCells];
+          }
+          // Note: vocab cells are already persisted via imageCacheRef, no need to save here
+      }
+
+      // Save previous layout cells when layout changes (only for current mode, same mode)
+      if (prevLayoutId.current !== undefined && prevLayoutId.current !== layoutId && prevAppMode.current === appMode) {
+          if (appMode === 'collage') {
+              collageLayoutPersistence.current[prevLayoutId.current] = [...collageCells];
         }
-        const savedLayoutData = layoutPersistence.current[layoutId];
+      }
+
+      if (appMode === 'collage') {
+          const savedLayoutData = collageLayoutPersistence.current[layoutId];
         let newCells: GridCellData[] = [];
         if (savedLayoutData && savedLayoutData.length === gridAssignments.length) {
             newCells = [...savedLayoutData];
@@ -303,10 +364,9 @@ export const Editor: React.FC<EditorProps> = ({
                 });
             }
         }
-        setCells(newCells);
-        prevLayoutId.current = layoutId;
+          setCollageCells(newCells);
     } else {
-        setCells(prevCells => {
+          setVocabCells(prevCells => {
             const newCells: GridCellData[] = [];
             for (let i = 0; i < gridAssignments.length; i++) {
                 const wordId = gridAssignments[i];
@@ -314,8 +374,8 @@ export const Editor: React.FC<EditorProps> = ({
                 const existingIndex = prevCells.findIndex(c => c.wordId === wordId && wordId !== 0);
                 if (existingIndex !== -1) existingCell = prevCells[existingIndex];
                 let cachedImage = null;
-                if (wordId !== 0 && imageCacheRef.current.has(wordId)) {
-                    cachedImage = imageCacheRef.current.get(wordId)!;
+                if (wordId !== 0 && vocabImageCacheRef.current.has(wordId)) {
+                    cachedImage = vocabImageCacheRef.current.get(wordId)!;
                 }
                 if (existingCell) {
                      newCells.push({ ...existingCell, id: `cell-${wordId}-${i}` });
@@ -328,33 +388,45 @@ export const Editor: React.FC<EditorProps> = ({
             }
             return newCells;
         });
-        prevLayoutId.current = layoutId;
-    }
+      }
+
+      prevLayoutId.current = layoutId;
+      prevAppMode.current = appMode;
     setStitchedImage(null); 
     onStitchedImageChange?.(null);
   }, [gridAssignments, vocabItems, appMode, layoutId]); 
 
   useEffect(() => {
-      if (onImageCacheChange) {
+      // Only export vocab image cache (collage images are not cached by wordId)
+      if (onImageCacheChange && appMode === 'vocab') {
           const cache: Record<number, string> = {};
-          imageCacheRef.current.forEach((val, key) => { cache[key] = val; });
+          vocabImageCacheRef.current.forEach((val, key) => { cache[key] = val; });
           onImageCacheChange(cache);
       }
-  }, [cells]);
+  }, [vocabCells, appMode]);
 
   const rotateCarousel = (direction: 'left' | 'right') => {
       const totalChars = CHARACTERS.length;
-      let nextIndex;
+      const step = 120;
+
       if (direction === 'left') {
-        nextIndex = (characterIndex - 1 + totalChars) % totalChars;
+          setCarouselRotation(prev => prev + step);
+          const nextIndex = (characterIndex - 1 + totalChars) % totalChars;
+          if (onCharacterChange) onCharacterChange(CHARACTERS[nextIndex]);
       } else {
-        nextIndex = (characterIndex + 1) % totalChars;
+          setCarouselRotation(prev => prev - step);
+          const nextIndex = (characterIndex + 1) % totalChars;
+          if (onCharacterChange) onCharacterChange(CHARACTERS[nextIndex]);
       }
-      
-      if (onCharacterChange) onCharacterChange(CHARACTERS[nextIndex]);
   };
 
   const handleCharClick = (idx: number) => {
+      if (idx === characterIndex) return;
+      const totalChars = CHARACTERS.length;
+      let diff = idx - characterIndex;
+      if (diff > totalChars / 2) diff -= totalChars;
+      if (diff < -totalChars / 2) diff += totalChars;
+      setCarouselRotation(prev => prev - (diff * 120));
       if (onCharacterChange) onCharacterChange(CHARACTERS[idx]);
   };
 
@@ -458,12 +530,34 @@ export const Editor: React.FC<EditorProps> = ({
     const cell = cells[index];
     if (!cell) return;
     const targetWordItem = vocabItems.find(v => v.id === cell.wordId);
-    let promptToUse = mode === 'create' ? (targetWordItem?.imagePrompt || "") : magicPrompt;
-    if (mode === 'create' && !targetWordItem && appMode === 'vocab') {
-        setError("Please select a word first.");
-        return;
-    }
+
+      // Dynamic Identity Injection
+      const mascotSignature = selectedCharacter?.promptSignature || "the character";
+      let promptToUse = "";
+
+      if (mode === 'create') {
+          if (!targetWordItem && appMode === 'vocab') {
+              setError("Please select a word first.");
+              return;
+          }
+
+          // Base dynamic prompt generated by the AI includes instructions for context-specific clothing
+          const dynamicScene = targetWordItem?.imagePrompt || "[MASCOT] in a relevant setting";
+
+          // Strategy: Embed the mascot's physical traits into the context-aware scene
+          promptToUse = dynamicScene.replace(/\[MASCOT\]/gi, mascotSignature);
+
+          // Ensure consistent art style
+          if (!promptToUse.toLowerCase().includes("watercolor")) {
+              promptToUse = `Soft watercolor and ink illustration of ${promptToUse}`;
+          }
+      } else {
+          // For Magic Edit, we combine current character identity with the user's specific tweak
+          promptToUse = `Update this watercolor scene featuring ${mascotSignature}: ${magicPrompt}. Keep the character's clothing and actions consistent with the word context.`;
+      }
+
     if (!promptToUse?.trim()) return;
+
     updateCell(index, { isLoading: true });
     setError(null);
     const aspectRatio = getTargetAspectRatio(layoutId, index);
@@ -481,7 +575,7 @@ export const Editor: React.FC<EditorProps> = ({
   const handleClearCell = (index: number) => {
       const cell = cells[index];
       if (cell && cell.wordId && appMode === 'vocab') {
-          imageCacheRef.current.delete(cell.wordId);
+          vocabImageCacheRef.current.delete(cell.wordId);
       }
       updateCell(index, { imageSrc: null });
   };
@@ -489,15 +583,35 @@ export const Editor: React.FC<EditorProps> = ({
   const handleClearAllImages = (e: React.MouseEvent) => {
       e.stopPropagation(); 
       if (window.confirm("確定要清空畫布上的所有內容嗎？")) {
-          imageCacheRef.current.clear();
-          layoutPersistence.current = {}; 
-          const emptyAssignments = new Array(gridAssignments.length).fill(0);
-          onGridUpdate([...emptyAssignments]);
+          if (appMode === 'vocab') {
+              // Only clear vocab-related data
+              // Clear image cache for currently assigned words only
+              cells.forEach(cell => {
+                  if (cell.wordId) {
+                      vocabImageCacheRef.current.delete(cell.wordId);
+                  }
+              });
+              // Reset grid assignments to empty
+              const emptyAssignments = new Array(gridAssignments.length).fill(0);
+              onGridUpdate([...emptyAssignments]);
+          } else {
+              // Collage mode: clear current layout persistence only
+              delete collageLayoutPersistence.current[layoutId];
+          }
+
+          // Reset cells for current view
           const forceResetToken = Date.now();
-          setCells(prev => prev.map((cell, i) => ({
+          const clearCellsFn = appMode === 'vocab' ? setVocabCells : setCollageCells;
+          clearCellsFn(prev => prev.map((cell, i) => ({
               id: `cell-cleared-${i}-${layoutId}-${forceResetToken}`,
-              imageSrc: null, wordId: 0, isLoading: false, prompt: "", showWordInfo: false, showSentences: false
+              imageSrc: null,
+              wordId: appMode === 'vocab' ? 0 : cell.wordId,
+              isLoading: false,
+              prompt: "",
+              showWordInfo: false,
+              showSentences: false
           })));
+
           setStitchedImage(null); 
           onStitchedImageChange?.(null);
           setError(null);
@@ -526,15 +640,17 @@ export const Editor: React.FC<EditorProps> = ({
   };
 
   const updateCell = (index: number, updates: Partial<GridCellData>) => {
-    setCells(prev => {
+      const setterFn = appMode === 'vocab' ? setVocabCells : setCollageCells;
+      setterFn(prev => {
         const newCells = [...prev];
         if (!newCells[index]) return prev;
         newCells[index] = { ...newCells[index], ...updates };
+          // Only cache images for vocab mode using vocab-specific cache
         if (updates.imageSrc !== undefined && appMode === 'vocab') {
              const wordId = newCells[index].wordId;
              if (wordId) {
-                 if (updates.imageSrc) imageCacheRef.current.set(wordId, updates.imageSrc);
-                 else imageCacheRef.current.delete(wordId);
+                 if (updates.imageSrc) vocabImageCacheRef.current.set(wordId, updates.imageSrc);
+                 else vocabImageCacheRef.current.delete(wordId);
              }
         }
         return newCells;
@@ -615,8 +731,7 @@ export const Editor: React.FC<EditorProps> = ({
                 if(cells[0]) drawCell(0, 0, 0, w/2, h/2); if(cells[1]) drawCell(1, w/2, 0, w/2, h/2); 
                 if(cells[2]) drawCell(2, 0, h/2, w/2, h/2); if(cells[3]) drawCell(3, w/2, h/2, w/2, h/2); 
                 break;
-            case 4: if(cells[0]) drawCell(0, 0, 0, w/2, h); if(cells[1]) drawCell(1, w/2, 0, w/2, h/2); if(cells[2]) drawCell(2, w/2, h/2, w/2, h/2); break;
-            // Fixed typo 'drawChar' to 'drawCell'
+            case 4: if (cells[0]) drawCell(0, 0, 0, w / 2, h); if (cells[1]) drawCell(1, w / 2, 0, w / 2, h / 2); if (cells[2]) drawCell(2, w / 2, h / 2, w / 2, h / 2); break;
             case 5: if(cells[0]) drawCell(0, 0, 0, w/2, h/2); if(cells[1]) drawCell(1, 0, h/2, w/2, h/2); if(cells[2]) drawCell(2, w/2, 0, w/2, h); break;
             case 6: 
                 const s = w/3;
@@ -687,28 +802,44 @@ export const Editor: React.FC<EditorProps> = ({
 
   if (appMode === 'vocab' && !selectedItem && layoutId === 0) {
     return (
-        <div className="flex-1 h-full flex flex-col items-center justify-center p-8 text-center relative overflow-hidden bg-gray-50 select-none">
+        <div className="flex-1 h-full flex flex-col items-center justify-start p-4 md:p-8 text-center relative overflow-hidden bg-gray-50 select-none">
             <div className="absolute inset-0 bg-[#f9fafb]">
                 <div className="absolute -top-[20%] -left-[10%] w-[70%] h-[70%] bg-slate-200/50 rounded-full blur-[100px] mix-blend-multiply opacity-60"></div>
                 <div className="absolute top-[40%] -right-[10%] w-[60%] h-[60%] bg-orange-100/80 rounded-full blur-[100px] mix-blend-multiply opacity-80"></div>
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[40%] h-[40%] bg-white/60 blur-[80px] rounded-full"></div>
             </div>
             <style>{`
-                @keyframes space-float { 0%, 100% { transform: translateY(10px); } 50% { transform: translateY(-10px); } }
+                @keyframes space-float { 
+                    0%, 100% { transform: translateY(12px); } 
+                    50% { transform: translateY(-12px); } 
+                }
                 @keyframes star-slide { from { transform: translateX(0); } to { transform: translateX(100vw); } }
-                .animate-space-float { animation: space-float 7s ease-in-out infinite; }
+                .animate-space-float { animation: space-float 6s ease-in-out infinite; }
                 .animate-drift-far { animation: star-slide 120s linear infinite; }
                 
                 .perspective-container {
-                    perspective: 1500px;
+                    perspective: 2500px;
                     width: 100%;
-                    max-width: 800px;
-                    height: 500px;
+                    max-width: 1200px;
+                    height: 400px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     position: relative;
-                    margin-bottom: 2rem;
+                    margin-top: 2rem;
+                    z-index: 20;
+                }
+                @media (min-width: 768px) {
+                    .perspective-container {
+                        height: 900px;
+                        margin-top: -5rem; /* Overall Shift Up for Tablet */
+                    }
+                }
+                @media (min-width: 1024px) {
+                    .perspective-container {
+                        height: 550px;
+                        margin-top: -6rem; /* Overall Shift Up for Web */
+                    }
                 }
                 
                 .carousel-3d {
@@ -716,23 +847,115 @@ export const Editor: React.FC<EditorProps> = ({
                     height: 100%;
                     position: absolute;
                     transform-style: preserve-3d;
-                    transition: transform 1.2s cubic-bezier(0.23, 1, 0.32, 1);
+                    transition: transform 1.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
                 }
                 
                 .character-slot {
                     position: absolute;
-                    width: 320px;
-                    height: 400px;
-                    left: 50%;
-                    top: 50%;
-                    margin-left: -160px;
-                    margin-top: -200px;
                     display: flex;
                     flex-direction: column;
                     align-items: center;
                     justify-content: center;
-                    backface-visibility: hidden;
+                    transform-style: preserve-3d;
                     transition: all 1s cubic-bezier(0.23, 1, 0.32, 1);
+                    width: 100%;
+                    left: 0;
+                    right: 0;
+                    margin: auto;
+                }
+
+                .nav-btn {
+                    position: absolute;
+                    z-index: 100;
+                    padding: 1.25rem;
+                    background: rgba(255, 255, 255, 0.2);
+                    backdrop-filter: blur(10px);
+                    border: 2px solid rgba(255, 255, 255, 0.3);
+                    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+                    border-radius: 9999px;
+                    color: #ea580c;
+                    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+                }
+                .nav-btn:hover {
+                    transform: scale(1.15) translateY(-50%);
+                    background: rgba(255, 255, 255, 0.9);
+                    border-color: #ea580c;
+                }
+                .nav-btn:active {
+                    transform: scale(0.9) translateY(-50%);
+                }
+                @media (max-width: 767px) {
+                    .nav-btn {
+                        padding: 0.8rem;
+                        bottom: 80px;
+                    }
+                }
+                /* Tablet & Web: Vertical Center alignment with info card */
+                @media (min-width: 768px) {
+                    .nav-btn {
+                        top: 77%; 
+                        transform: translateY(-50%);
+                    }
+                    /* Align button center with card edges */
+                    .nav-btn.left-2 { 
+                        left: 50%; 
+                        margin-left: -290px; /* Card is roughly 520px wide in row mode */
+                    }
+                    .nav-btn.right-2 { 
+                        right: 50%; 
+                        margin-right: -290px;
+                    }
+                }
+                @media (min-width: 1024px) {
+                    .nav-btn {
+                        top: 77%;
+                        transform: translateY(-50%);
+                    }
+                    .nav-btn.left-2 { 
+                        left: 50%; 
+                        margin-left: -320px; 
+                    }
+                    .nav-btn.right-2 { 
+                        right: 50%; 
+                        margin-right: -320px;
+                    }
+                }
+                
+                .cyber-card {
+                    background: rgba(255, 255, 255, 0.15);
+                    backdrop-filter: blur(16px) saturate(180%);
+                    -webkit-backdrop-filter: blur(16px) saturate(180%);
+                    border-radius: 2rem;
+                    border: 2px solid rgba(255, 255, 255, 0.4);
+                    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+                    padding: 1.5rem 3rem;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    transform: translateZ(100px);
+                    transition: all 0.5s ease;
+                }
+                
+                /* Horizontal Layout for Tablet/Web */
+                @media (min-width: 768px) {
+                    .cyber-card {
+                        flex-direction: row;
+                        gap: 1.5rem;
+                        padding: 0.75rem 1.75rem;
+                        max-width: 90%;
+                    }
+                }
+                
+                .character-glow {
+                    position: absolute;
+                    width: 150%;
+                    height: 150%;
+                    background: radial-gradient(circle, rgba(251,146,60,0.4) 0%, rgba(251,146,60,0) 70%);
+                    z-index: -1;
+                    filter: blur(40px);
                 }
             `}</style>
             
@@ -743,23 +966,16 @@ export const Editor: React.FC<EditorProps> = ({
                 </div>
             </div>
 
-            <div className="relative z-10 w-full flex flex-col items-center">
-                <h2 className="text-4xl font-black text-slate-800 mb-2 tracking-tight">Choose Your Pilot</h2>
-                <p className="text-lg text-slate-500 mb-10 font-medium">Drag or use arrows to select your avatar</p>
+            <div className="relative z-10 w-full h-full flex flex-col items-center pt-8 md:pt-4">
+                <div className="shrink-0 flex flex-col items-center z-50">
+                    <h2 className="text-4xl md:text-6xl lg:text-5xl font-black text-slate-800 mb-1 md:mb-2 tracking-tight drop-shadow-sm">Choose Your Pilot</h2>
+                    <p className="text-sm md:text-2xl lg:text-lg text-slate-500 mb-2 md:mb-4 font-bold opacity-80 uppercase tracking-widest">Master of the Watercolor Realm</p>
+                </div>
                 
-                <div className="perspective-container">
-                    <button 
-                        onClick={() => rotateCarousel('left')}
-                        className="absolute left-4 z-50 p-5 bg-white/90 backdrop-blur rounded-full shadow-xl border-2 border-orange-200 text-orange-600 hover:bg-orange-500 hover:text-white transition-all transform hover:scale-110 active:scale-95"
-                    >
-                        <ChevronLeft size={32} />
-                    </button>
-                    <button 
-                        onClick={() => rotateCarousel('right')}
-                        className="absolute right-4 z-50 p-5 bg-white/90 backdrop-blur rounded-full shadow-xl border-2 border-orange-200 text-orange-600 hover:bg-orange-500 hover:text-white transition-all transform hover:scale-110 active:scale-95"
-                    >
-                        <ChevronRight size={32} />
-                    </button>
+                <div className="perspective-container flex-1 min-h-0">
+                    {/* Navigation buttons moved into shared alignment context */}
+                    <button onClick={() => rotateCarousel('left')} className="nav-btn left-2" aria-label="Previous Pilot"><ChevronLeft className="w-6 h-6 md:w-8 md:h-8" /></button>
+                    <button onClick={() => rotateCarousel('right')} className="nav-btn right-2" aria-label="Next Pilot"><ChevronRight className="w-6 h-6 md:w-8 md:h-8" /></button>
 
                     <div 
                         className="carousel-3d"
@@ -775,27 +991,24 @@ export const Editor: React.FC<EditorProps> = ({
                     >
                         {CHARACTERS.map((char, idx) => {
                             const angle = idx * 120;
-                            // Critical logic: use ID comparison for selection check
                             const isSelected = selectedCharacter?.id === char.id;
+                            const isMobile = window.innerWidth < 768;
+                            const isTablet = window.innerWidth >= 768 && window.innerWidth < 1024;
+                            const translateZ = isMobile ? '160px' : (isTablet ? '450px' : '380px');
+
                             return (
-                                <div 
-                                    key={char.id}
-                                    className="character-slot cursor-pointer"
-                                    style={{ 
-                                        transform: `rotateY(${angle}deg) translateZ(320px) rotateY(${-angle}deg)`,
-                                    }}
-                                    onClick={() => handleCharClick(idx)}
-                                >
-                                    <div className={`relative transition-all duration-1000 transform ${isSelected ? 'scale-125 opacity-100 blur-0' : 'scale-75 opacity-25 blur-[4px]'}`}>
-                                        <div className={`absolute inset-0 bg-white/60 blur-[60px] rounded-full transition-opacity duration-1000 ${isSelected ? 'opacity-100' : 'opacity-0'}`}></div>
-                                        <img 
-                                            src={char.imageUrl} 
-                                            alt={char.name} 
-                                            className={`h-80 w-auto object-contain drop-shadow-[0_30px_60px_rgba(0,0,0,0.2)] transition-transform duration-500 ${isSelected ? 'animate-space-float' : ''}`}
-                                        />
-                                        <div className={`mt-8 flex flex-col items-center transition-all duration-1000 ${isSelected ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-8 opacity-0 scale-50'}`}>
-                                            <span className="bg-orange-500 text-white px-8 py-2 rounded-full font-black text-2xl shadow-xl border-4 border-white tracking-tight">{char.name}</span>
-                                            <p className="text-sm font-black text-orange-900 mt-2 uppercase tracking-[0.2em] bg-orange-100/80 px-4 py-1 rounded-md border border-orange-200">{char.description}</p>
+                                <div key={char.id} className="character-slot" style={{ transform: `rotateY(${angle}deg) translateZ(${translateZ})` }} onClick={() => handleCharClick(idx)}>
+                                    <div className={`relative transition-all duration-1000 transform flex flex-col items-center ${isSelected ? 'scale-[1.1] md:scale-[1.15] lg:scale-[1.25] opacity-100' : 'scale-[0.6] md:scale-[0.7] lg:scale-[0.8] opacity-70 blur-[1px]'}`}>
+                                        {isSelected && <div className="character-glow animate-pulse"></div>}
+                                        <div className={`absolute -bottom-10 left-1/2 -translate-x-1/2 w-[60%] h-12 bg-black/10 blur-3xl rounded-[100%] transition-all duration-1000 pointer-events-none ${isSelected ? 'opacity-100 scale-125' : 'opacity-0 scale-50'}`}></div>
+                                        <img src={char.imageUrl} alt={char.name} className={`h-56 md:h-[32rem] lg:h-[28rem] w-auto object-contain drop-shadow-[0_40px_100px_rgba(0,0,0,0.2)] transition-all duration-700 cursor-pointer ${isSelected ? 'animate-space-float' : ''}`} style={{ backfaceVisibility: 'hidden', transform: 'translateZ(50px)' }} />
+
+                                        {/* Nameplate Card: Optimized for Tablet/Web to be horizontally aligned */}
+                                        <div className={`cyber-card lg:flex -mt-16 md:-mt-20 lg:-mt-16 z-50 transition-all duration-700 md:px-5 md:py-2.5 ${isSelected ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0 scale-90'}`}>
+                                            <span className="bg-gradient-to-br from-orange-400 to-orange-600 text-white px-5 md:px-5 py-2 md:py-1.5 rounded-2xl font-black text-xl md:text-xl lg:text-xl shadow-xl border-4 border-white/50 tracking-tighter uppercase whitespace-nowrap">{char.name}</span>
+                                            <div className="hidden md:block h-6 w-px bg-white/30"></div>
+                                            <div className="h-px w-full bg-white/30 my-2 md:hidden"></div>
+                                            <p className="text-[10px] md:text-xs font-black text-orange-950 uppercase tracking-[0.2em] opacity-90 text-center md:text-left">{char.description}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -804,11 +1017,14 @@ export const Editor: React.FC<EditorProps> = ({
                     </div>
                 </div>
 
-                <div className="bg-white/70 backdrop-blur-xl border-2 border-white p-6 rounded-3xl shadow-2xl max-w-md ring-1 ring-black/5 mt-4">
-                    <p className="text-base text-slate-700 leading-relaxed font-bold">
-                        Welcome to <span className="text-orange-600">Sir Isaac's Vocab Studio</span>. 
-                        Your selected pilot will appear in every watercolor masterpiece you generate!
-                    </p>
+                {/* Mobile Welcome Text (Hidden on Tablet/Web) */}
+                <div className="shrink-0 mb-8 px-6 z-50 md:hidden">
+                    <div className="bg-white/40 backdrop-blur-3xl border-2 border-white/60 p-4 rounded-[2.5rem] shadow-2xl max-w-[90vw] text-center group hover:bg-white/60 transition-colors duration-500">
+                        <p className="text-sm text-slate-700 leading-relaxed font-bold">
+                            Welcome to <span className="text-orange-600 font-black px-1">Sir Isaac's Vocab Studio</span>.
+                            Your selected pilot will appear in every watercolor masterpiece you generate!
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -820,12 +1036,7 @@ export const Editor: React.FC<EditorProps> = ({
        <div className="flex flex-col items-center gap-4 mb-8 sticky top-0 z-40 w-fit max-w-[95vw]">
             <div className="flex flex-nowrap items-center gap-1 md:gap-2 p-1.5 md:p-2 bg-white/90 backdrop-blur rounded-full border-2 border-gray-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] no-scrollbar overflow-x-auto">
                 {LAYOUTS.map((l) => (
-                    <button
-                        key={l.id}
-                        onClick={() => onLayoutChange(l.id, l.count)}
-                        className={`p-1.5 md:p-3 rounded-full border-2 transition-all shrink-0 ${layoutId === l.id ? 'bg-orange-500 text-white border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transform -translate-y-0.5' : 'border-transparent text-gray-400 hover:bg-gray-100'}`}
-                        title={l.name}
-                    >
+                    <button key={l.id} onClick={() => onLayoutChange(l.id, l.count)} className={`p-1.5 md:p-3 rounded-full border-2 transition-all shrink-0 ${layoutId === l.id ? 'bg-orange-500 text-white border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transform -translate-y-0.5' : 'border-transparent text-gray-400 hover:bg-gray-100'}`} title={l.name}>
                         <div className="w-5 h-5 md:w-6 md:h-6">{l.icon}</div>
                     </button>
                 ))}
@@ -845,26 +1056,14 @@ export const Editor: React.FC<EditorProps> = ({
                 const isSelected = activeCellIndex === index;
                 const cellScale = getCellScale(layoutId, index);
                 return (
-                    <div 
-                        key={cell.id} 
-                        className={`flex flex-col gap-3 ${getCellSpanClasses(index)} ${draggedIndex === index ? 'opacity-50' : 'opacity-100'}`}
-                        onClick={() => onActiveCellChange(index)}
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, index)}
-                        onDragEnd={() => setDraggedIndex(null)}
-                        onDragOver={(e) => handleDragOver(e, index)}
-                        onDrop={(e) => handleDrop(e, index)}
-                    >
+                    <div key={cell.id} className={`flex flex-col gap-3 ${getCellSpanClasses(index)} ${draggedIndex === index ? 'opacity-50' : 'opacity-100'}`} onClick={() => onActiveCellChange(index)} draggable onDragStart={(e) => handleDragStart(e, index)} onDragEnd={() => setDraggedIndex(null)} onDragOver={(e) => handleDragOver(e, index)} onDrop={(e) => handleDrop(e, index)}>
                         <div className={`bg-white rounded-xl border-2 overflow-hidden transition-all duration-300 group cursor-grab active:cursor-grabbing h-full flex flex-col ${isSelected ? 'border-blue-500 shadow-[6px_6px_0px_0px_#3b82f6] -translate-y-1 ring-2 ring-blue-100' : 'border-gray-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] hover:border-gray-600 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'}`}>
                             <div className={`p-3 border-b-2 flex flex-col gap-2 shrink-0 ${isSelected ? 'bg-blue-50 border-blue-500' : 'bg-gray-50 border-gray-900'}`}>
                                 <div className="flex items-center gap-2 justify-between">
                                     <div className="flex items-center gap-2 flex-1 overflow-hidden">
                                         <div className={`w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-xs text-white font-bold ${isSelected ? 'bg-blue-500' : 'bg-gray-500'}`}>{index + 1}</div>
                                         {appMode === 'vocab' ? (
-                                            <select 
-                                                className="bg-transparent w-full outline-none cursor-pointer truncate font-bold text-sm"
-                                                value={cell.wordId || 0}
-                                                onChange={(e) => {
+                                            <select className="bg-transparent w-full outline-none cursor-pointer truncate font-bold text-sm" value={cell.wordId || 0} onChange={(e) => {
                                                     const newWordId = Number(e.target.value);
                                                     const newAssignments = [...gridAssignments];
                                                     if (newWordId !== 0) {
@@ -873,8 +1072,7 @@ export const Editor: React.FC<EditorProps> = ({
                                                     }
                                                     newAssignments[index] = newWordId;
                                                     onGridUpdate(newAssignments);
-                                                }}
-                                            >
+                                            }}>
                                                 <option value={0}>Select a word...</option>
                                                 {vocabItems.map(v => <option key={v.id} value={v.id}>{v.word}</option>)}
                                             </select>
@@ -939,7 +1137,7 @@ export const Editor: React.FC<EditorProps> = ({
              </div>
              <div className="flex flex-col md:flex-row gap-3">
                 <div className="flex-1 relative">
-                    <input className="w-full h-12 px-4 border-2 border-gray-900 rounded-xl focus:outline-none focus:border-purple-600 focus:ring-4 focus:ring-purple-100 font-medium bg-gray-50" placeholder="Describe changes... e.g., 'Make it watercolor style'" value={magicPrompt} onChange={(e) => setMagicPrompt(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleMagicApply()} />
+                          <input className="w-full h-12 px-4 border-2 border-gray-900 rounded-xl focus:outline-none focus:border-purple-600 focus:ring-4 focus:ring-purple-100 font-medium bg-gray-50" placeholder="Describe changes... e.g., 'Make it watercolor style'" value={magicPrompt} onChange={(e) => setMagicPrompt(e.target.value)} />
                     {layoutId > 0 && !applyToAll && <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold bg-orange-100 text-orange-800 px-2 py-1 rounded border border-orange-300 pointer-events-none">Editing #{activeCellIndex + 1}</div>}
                 </div>
                 <button onClick={handleMagicApply} disabled={!magicPrompt.trim()} className="h-12 px-6 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 text-white font-bold rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-y-1 active:shadow-none transition-all flex items-center justify-center gap-2">Apply Magic</button>
@@ -951,39 +1149,113 @@ export const Editor: React.FC<EditorProps> = ({
            {error && <div className="bg-red-100 border-2 border-red-500 text-red-700 px-4 py-3 rounded-xl shadow-[4px_4px_0px_0px_#ef4444] mb-4 font-bold">{error}</div>}
             
             {(layoutId > 0 || appMode === 'collage') && (
-                <div className="bg-gray-100 p-4 rounded-xl border-2 border-gray-200 mb-4 flex flex-col md:flex-row items-center justify-between gap-4">
-                    <div className="flex flex-wrap items-center gap-6 justify-center md:justify-start">
-                        <div className="flex items-center gap-2 font-bold text-gray-700"><Settings2 size={20} /> Collage Settings</div>
-                        <div className="flex items-center gap-4 flex-wrap justify-center">
-                            <label className="flex items-center gap-2 cursor-pointer select-none">
-                                <div className={`w-10 h-6 rounded-full p-1 transition-colors ${dividerConfig.show ? 'bg-indigo-500' : 'bg-gray-300'}`} onClick={() => setDividerConfig(prev => ({...prev, show: !prev.show}))}>
-                                    <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${dividerConfig.show ? 'translate-x-4' : 'translate-x-0'}`} />
-                                </div><span className="text-sm font-semibold text-gray-600">Divider Lines</span>
-                            </label>
-                            {dividerConfig.show && (
-                                <div className="flex items-center gap-3 animate-in fade-in slide-in-from-left-2">
-                                    <input type="color" value={dividerConfig.color} onChange={(e) => setDividerConfig(prev => ({...prev, color: e.target.value}))} className="w-8 h-8 rounded cursor-pointer border-2 border-gray-300 p-0.5" />
-                                    <div className="flex items-center gap-2 bg-white px-2 py-1 rounded border border-gray-300">
-                                        <GripHorizontal size={14} className="text-gray-400" />
-                                        <input type="range" min="2" max="50" value={dividerConfig.thickness} onChange={(e) => setDividerConfig(prev => ({...prev, thickness: Number(e.target.value)}))} className="w-24 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
-                                    </div>
-                                    <div className="flex gap-1 bg-white p-1 rounded border border-gray-300">
-                                        <button onClick={() => setDividerConfig(prev => ({...prev, style: 'solid'}))} className={`p-1 rounded ${dividerConfig.style === 'solid' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-400'}`}><Minus size={16} strokeWidth={3} /></button>
-                                        <button onClick={() => setDividerConfig(prev => ({...prev, style: 'dashed'}))} className={`p-1 rounded ${dividerConfig.style === 'dashed' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-400'}`}><MoreHorizontal size={16} /></button>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={handleClearAllImages}
-                            className="flex items-center gap-2 px-6 py-2 bg-white border-2 border-gray-900 rounded-xl font-bold text-red-500 hover:bg-red-50 active:scale-95 transition-all shadow-sm group"
-                            title="Reset Canvas"
-                        >
-                           <RotateCcw size={16} className="group-hover:-rotate-180 transition-transform duration-500" />
-                           <span className="text-xs tracking-wider uppercase font-black">Clear Canvas</span>
-                        </button>
+                  <div className="bg-gray-100 p-4 rounded-xl border-2 border-gray-200 mb-4 transition-all duration-300">
+                      {/* Top Row: Title, Toggle, Clear Button - Always Visible & Aligned */}
+                      <div className="flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-6">
+                              <div className="flex items-center gap-2 font-bold text-gray-700">
+                                  <Settings2 size={20} />
+                                  <span>Collage Settings</span>
+                              </div>
+
+                              <label className="flex items-center gap-2 cursor-pointer select-none bg-white px-3 py-1.5 rounded-lg border border-gray-200 hover:border-indigo-300 transition-colors">
+                                  <div
+                                      className={`w-9 h-5 rounded-full p-1 transition-colors ${dividerConfig.show ? 'bg-indigo-500' : 'bg-gray-300'}`}
+                                      onClick={() => setDividerConfig(prev => ({ ...prev, show: !prev.show }))}
+                                  >
+                                      <div className={`w-3 h-3 rounded-full bg-white shadow-sm transition-transform ${dividerConfig.show ? 'translate-x-4' : 'translate-x-0'}`} />
+                                  </div>
+                                  <span className={`text-xs font-bold uppercase tracking-wider ${dividerConfig.show ? 'text-indigo-600' : 'text-gray-500'}`}>Divider Lines</span>
+                              </label>
+                          </div>
+
+                          <button
+                              onClick={handleClearAllImages}
+                              className="flex items-center gap-2 px-4 py-2 bg-white border-2 border-gray-900 rounded-xl font-bold text-red-500 hover:bg-red-50 active:scale-95 transition-all shadow-sm group"
+                              title="Reset Canvas"
+                          >
+                              <RotateCcw size={16} className="group-hover:-rotate-180 transition-transform duration-500" />
+                              <span className="text-xs tracking-wider uppercase font-black">Clear Canvas</span>
+                          </button>
+                      </div>
+
+                      {/* Controls Row: Animate height/opacity when expanded */}
+                      <div
+                          className={`grid transition-all duration-300 ease-in-out overflow-hidden ${dividerConfig.show ? 'grid-rows-[1fr] opacity-100 mt-4 pt-4 border-t-2 border-gray-200 border-dashed' : 'grid-rows-[0fr] opacity-0 mt-0 pt-0 border-none'}`}
+                      >
+                          <div className="min-h-0 flex items-center justify-between gap-4 flex-wrap">
+                              <div className="flex items-center gap-4 flex-wrap">
+                                  {/* Color Picker */}
+                                  <div className="flex items-center gap-3 bg-white px-3 py-2 rounded-xl border border-gray-200 shadow-sm">
+                                      <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Color</span>
+                                      <div className="flex items-center gap-1.5">
+                                          {['#ffffff', '#000000', '#f97316', '#3b82f6', '#22c55e', '#ef4444', '#a855f7'].map(color => (
+                                              <button
+                                                  key={color}
+                                                  onClick={() => setDividerConfig(prev => ({ ...prev, color }))}
+                                                  className={`w-5 h-5 rounded-full border shadow-sm transition-all hover:scale-125 ${dividerConfig.color === color ? 'ring-2 ring-offset-1 ring-indigo-500 border-white scale-110' : 'border-gray-200'}`}
+                                                  style={{ backgroundColor: color }}
+                                              />
+                                          ))}
+                                          <div className="w-px h-4 bg-gray-200 mx-1" />
+                                          <div className="relative group">
+                                              <input
+                                                  type="color"
+                                                  value={dividerConfig.color}
+                                                  onChange={(e) => setDividerConfig(prev => ({ ...prev, color: e.target.value }))}
+                                                  className="w-6 h-6 rounded-full cursor-pointer opacity-0 absolute inset-0 z-10"
+                                              />
+                                              <div
+                                                  className="w-6 h-6 rounded-full border-2 border-white shadow-sm ring-1 ring-gray-200 group-hover:ring-indigo-400 transition-all flex items-center justify-center overflow-hidden"
+                                                  style={{ background: 'conic-gradient(from 0deg, red, yellow, lime, aqua, blue, magenta, red)' }}
+                                              />
+                                          </div>
+                                      </div>
+                                  </div>
+
+                                  {/* Thickness & Style Group */}
+                                  <div className="flex items-center gap-4">
+                                      {/* Thickness */}
+                                      <div className="flex items-center gap-3 bg-white px-3 py-2 rounded-xl border border-gray-200 shadow-sm">
+                                          <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Width</span>
+                                          <div className="flex items-center gap-2">
+                                              <input
+                                                  type="range"
+                                                  min="2"
+                                                  max="50"
+                                                  value={dividerConfig.thickness}
+                                                  onChange={(e) => setDividerConfig(prev => ({ ...prev, thickness: Number(e.target.value) }))}
+                                                  className="w-24 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-600"
+                                              />
+                                              <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded min-w-[40px] text-center font-mono">{dividerConfig.thickness}px</span>
+                                          </div>
+                                      </div>
+
+                                      {/* Line Styles */}
+                                      <div className="flex items-center gap-3 bg-white px-3 py-2 rounded-xl border border-gray-200 shadow-sm">
+                                          <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Style</span>
+                                          <div className="flex p-0.5 bg-gray-100 rounded-lg">
+                                              {[
+                                                  { id: 'solid', label: 'Solid', icon: '━━' },
+                                                  { id: 'dashed', label: 'Dashed', icon: '╌╌' },
+                                                  { id: 'dotted', label: 'Dotted', icon: '••••' },
+                                                  { id: 'double', label: 'Double', icon: '══' },
+                                                  { id: 'groove', label: 'Groove', icon: '▓▓' }
+                                              ].map(style => (
+                                                <button 
+                                                    key={style.id}
+                                                    onClick={() => setDividerConfig(prev => ({ ...prev, style: style.id as any }))}
+                                                    className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${dividerConfig.style === style.id ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                                                    title={style.label}
+                                                >
+                                                    {style.icon}
+                                                </button>
+                                            ))}
+                                          </div>
+                                      </div>
+                                  </div>
+                              </div>
+                          </div>
                     </div>
                 </div>
             )}

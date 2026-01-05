@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { VocabItem } from '../types';
-import { Eraser, X, Download, FileText, FileJson, ChevronDown, Edit2 } from 'lucide-react';
+import { VocabItem, Character, CHARACTERS } from '../types';
+import { Eraser, X, Download, FileText, FileJson, ChevronDown, Edit2, Users } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 
 interface VocabListProps {
@@ -17,6 +17,8 @@ interface VocabListProps {
   onClose?: () => void;
   imageCache: Record<number, string>;
   stitchedImage: string | null;
+    selectedCharacter: Character;
+    onCharacterChange: (char: Character) => void;
 }
 
 export const VocabList: React.FC<VocabListProps> = ({ 
@@ -31,9 +33,12 @@ export const VocabList: React.FC<VocabListProps> = ({
   onUnselectAll,
   onClose,
   imageCache,
-  stitchedImage
+    stitchedImage,
+    selectedCharacter,
+    onCharacterChange
 }) => {
   const [showExportMenu, setShowExportMenu] = useState(false);
+    const [themeSentenceHeight, setThemeSentenceHeight] = useState(160);
 
   // Helper to render text to an image to bypass jsPDF encoding issues with CJK and IPA
   const textToImage = (text: string, fontSize: number, color: string, isBold: boolean = false, maxWidth: number = 800): { dataUrl: string, width: number, height: number } => {
@@ -229,9 +234,9 @@ export const VocabList: React.FC<VocabListProps> = ({
   return (
     <div className="w-full bg-white border-r border-orange-200 h-full flex flex-col overflow-hidden relative">
       <div className="p-4 pb-2 shrink-0 border-b border-gray-100 bg-white z-10">
-        <div className="flex justify-between items-center mb-2 md:mb-4 gap-2">
+              <div className="flex flex-wrap justify-between items-center mb-2 md:mb-4 gap-2">
             <h2 className="text-lg md:text-xl font-bold text-orange-600 font-serif whitespace-nowrap">Results ({items.length})</h2>
-            <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 flex-wrap min-w-0">
                 {items.length > 0 && (
                   <>
                     {layoutId > 0 && onUnselectAll && (
@@ -239,7 +244,7 @@ export const VocabList: React.FC<VocabListProps> = ({
                             onClick={onUnselectAll}
                             className="text-[10px] md:text-xs flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1.5 rounded transition-colors shrink-0 font-bold"
                         >
-                            <Eraser size={14} /> Unselect
+                                      <Eraser size={14} /><span className="hidden sm:inline">Unselect</span>
                         </button>
                     )}
                     <div className="relative">
@@ -247,12 +252,12 @@ export const VocabList: React.FC<VocabListProps> = ({
                             onClick={() => setShowExportMenu(!showExportMenu)}
                             className="text-[10px] md:text-xs flex items-center gap-1 bg-orange-500 hover:bg-orange-600 text-white px-2 py-1.5 rounded transition-colors shrink-0 font-bold shadow-sm"
                         >
-                            <Download size={14} /> Export <ChevronDown size={12} />
+                                      <Download size={14} /><span className="hidden sm:inline">Export</span> <ChevronDown size={12} />
                         </button>
                         {showExportMenu && (
                             <div className="absolute right-0 mt-2 w-36 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                                <button onClick={exportAsPDF} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-orange-50 flex items-center gap-2 font-bold"><FileText size={16} className="text-red-500" /> PDF Document</button>
-                                <button onClick={exportAsText} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-orange-50 flex items-center gap-2 font-bold border-t border-gray-100"><FileJson size={16} className="text-blue-500" /> Plain Text</button>
+                                          <button onClick={exportAsPDF} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-orange-50 flex items-center gap-2 font-bold"><FileText size={16} className="text-red-500" />PDF Document</button>
+                                          <button onClick={exportAsText} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-orange-50 flex items-center gap-2 font-bold border-t border-gray-100"><FileJson size={16} className="text-blue-500" />Plain Text</button>
                             </div>
                         )}
                     </div>
@@ -263,9 +268,47 @@ export const VocabList: React.FC<VocabListProps> = ({
                 )}
             </div>
         </div>
+
+              {/* Character Switcher - Post Results */}
+              {items.length > 0 && (
+                  <div className="mb-4 animate-in fade-in slide-in-from-top-4 duration-500">
+                      <div className="flex items-center gap-2 mb-2">
+                          <Users size={14} className="text-orange-600 shrink-0" />
+                          <span className="text-[10px] font-black text-orange-800 uppercase tracking-widest truncate">Master Illustrator</span>
+                      </div>
+                      <div className="flex items-center gap-1 justify-between bg-orange-50/50 p-1.5 rounded-2xl border border-orange-100 shadow-inner min-w-0">
+                          {CHARACTERS.map((char) => {
+                              const isSelected = selectedCharacter.id === char.id;
+                              return (
+                                  <button
+                                      key={char.id}
+                                      onClick={() => onCharacterChange(char)}
+                                      className={`flex-1 min-w-0 group flex flex-col items-center gap-1 py-1.5 px-0.5 rounded-xl transition-all duration-300 ${isSelected
+                                          ? 'bg-white shadow-md ring-2 ring-orange-400 -translate-y-0.5'
+                                          : 'hover:bg-white/60 text-gray-400'
+                                          }`}
+                                  >
+                                      <div className={`relative w-10 h-10 rounded-full overflow-hidden border-2 transition-all duration-300 shrink-0 ${isSelected ? 'border-orange-500' : 'border-transparent grayscale opacity-60 group-hover:grayscale-0 group-hover:opacity-100'
+                                          }`}>
+                                          <img
+                                              src={char.iconUrl}
+                                              alt={char.name}
+                                              className="w-full h-full object-cover"
+                                          />
+                                          {isSelected && <div className="absolute inset-0 bg-orange-500/10" />}
+                                      </div>
+                                      <span className={`text-[8px] font-black uppercase tracking-tight truncate max-w-full ${isSelected ? 'text-orange-600' : 'text-gray-500'}`}>
+                                          {char.name.split(' ')[0]}
+                                      </span>
+                                  </button>
+                              );
+                          })}
+                      </div>
+                  </div>
+              )}
       </div>
       
-      <div className="flex-1 overflow-y-auto p-4 space-y-2 no-scrollbar pb-32">
+          <div className="flex-1 overflow-y-auto p-4 space-y-2 no-scrollbar pb-48">
         {items.length === 0 ? (
             <p className="text-gray-400 text-center mt-10 italic">No words generated yet. Use the panel to start.</p>
         ) : (
@@ -309,18 +352,53 @@ export const VocabList: React.FC<VocabListProps> = ({
       </div>
 
       {items.length > 0 && (
-        <div className="absolute bottom-0 left-0 right-0 p-4 bg-orange-50 border-t-2 border-orange-200 shadow-[0_-4px_10px_rgba(0,0,0,0.05)] z-20">
+              <>
+                  {/* Resizable divider for Theme Sentence */}
+                  <div
+                      className="absolute left-0 right-0 h-2 cursor-row-resize bg-orange-100 hover:bg-orange-300 transition-colors z-30 flex items-center justify-center"
+                      style={{ bottom: `${themeSentenceHeight}px` }}
+                      onMouseDown={(e) => {
+                          e.preventDefault();
+                          const startY = e.clientY;
+                          const startHeight = themeSentenceHeight;
+
+                          const onMouseMove = (e: MouseEvent) => {
+                              const delta = startY - e.clientY;
+                              const newHeight = Math.max(120, Math.min(300, startHeight + delta));
+                              setThemeSentenceHeight(newHeight);
+                          };
+
+                          const onMouseUp = () => {
+                              document.removeEventListener('mousemove', onMouseMove);
+                              document.removeEventListener('mouseup', onMouseUp);
+                          };
+
+                          document.addEventListener('mousemove', onMouseMove);
+                          document.addEventListener('mouseup', onMouseUp);
+                      }}
+                  >
+                      <div className="w-12 h-0.5 bg-orange-300 rounded" />
+                  </div>
+
+                  <div
+                      data-theme-sentence
+                      className="absolute bottom-0 left-0 right-0 p-4 bg-orange-50 border-t-2 border-orange-200 shadow-[0_-4px_10px_rgba(0,0,0,0.05)] z-20"
+                      style={{ height: `${themeSentenceHeight}px` }}
+                  >
             <div className="flex items-center gap-2 mb-2">
-                <Edit2 size={14} className="text-orange-600" />
-                <span className="text-xs font-black text-orange-800 uppercase tracking-widest">Theme Sentence</span>
+                          <Edit2 size={14} className="text-orange-600" />
+                          <span className="text-xs font-black text-orange-800 uppercase tracking-widest">Theme Sentence</span>
             </div>
             <textarea 
-                value={themeSentence}
-                onChange={(e) => onThemeChange(e.target.value)}
-                placeholder="Add a summary or title for this set..."
-                className="w-full p-2 text-sm bg-white border-2 border-orange-200 rounded-xl focus:outline-none focus:border-orange-500 resize-none font-medium h-20 text-gray-700 leading-snug no-scrollbar"
+                          value={themeSentence}
+                          onChange={(e) => onThemeChange(e.target.value)}
+                          placeholder="Add a summary or title for this set..."
+                          rows={3}
+                          className="w-full p-2 text-sm bg-white border-2 border-orange-200 rounded-xl focus:outline-none focus:border-orange-500 resize-y font-medium text-gray-700 leading-snug no-scrollbar"
+                          style={{ minHeight: '72px', height: 'calc(100% - 40px)' }}
             />
-        </div>
+                  </div>
+              </>
       )}
     </div>
   );

@@ -18,6 +18,7 @@ export interface Character {
   name: string;
   description: string;
   imageUrl: string;
+  iconUrl: string;
   promptSignature: string;
 }
 
@@ -34,21 +35,24 @@ export const CHARACTERS: Character[] = [
     id: 'isaac',
     name: 'Sir Isaac',
     description: 'CHUBBY ORANGE CAT',
-    imageUrl: 'https://raw.githubusercontent.com/akirap3/OrangeCatEnglishDiary/refs/heads/main/images/vocabByPaw/meowaustrant.png',
-    promptSignature: 'a chubby orange tabby cat with round glasses (Sir Isaac) in a soft watercolor astronaut suit'
+    imageUrl: 'https://github.com/akirap3/OrangeCatEnglishDiary/blob/main/images/vocabByPaw/meowton/meowaustrant.png?raw=true',
+    iconUrl: 'https://github.com/akirap3/OrangeCatEnglishDiary/blob/main/images/vocabByPaw/meowton/meowton_face.png?raw=true',
+    promptSignature: 'a chubby orange tabby cat with round glasses named Sir Isaac'
   },
   {
     id: 'buddy',
     name: 'Buddy',
     description: 'ADVENTUROUS CORGI',
     imageUrl: 'https://raw.githubusercontent.com/akirap3/OrangeCatEnglishDiary/refs/heads/main/images/vocabByPaw/buddy/buddy_astronaut_rmbg.png',
-    promptSignature: 'a cute perky corgi astronaut named Buddy in a soft watercolor space suit'
+    iconUrl: 'https://github.com/akirap3/OrangeCatEnglishDiary/blob/main/images/vocabByPaw/buddy/buddy_face.png?raw=true',
+    promptSignature: 'a cute perky corgi named Buddy'
   },
   {
     id: 'rocket',
     name: 'Rocket',
     description: 'NAUGHTY RACCOON',
     imageUrl: 'https://raw.githubusercontent.com/akirap3/OrangeCatEnglishDiary/refs/heads/main/images/vocabByPaw/rocket/rocket_rmbg.png',
-    promptSignature: 'a mischievous and clever raccoon astronaut named Rocket in a soft watercolor space suit'
+    iconUrl: 'https://github.com/akirap3/OrangeCatEnglishDiary/blob/main/images/vocabByPaw/rocket/rocket-face.png?raw=true',
+    promptSignature: 'a mischievous and clever raccoon named Rocket'
   }
 ];

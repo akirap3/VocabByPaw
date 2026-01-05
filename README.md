@@ -11,6 +11,11 @@ Powered by **Google Gemini 2.5 Flash** and **Gemini 3 Preview**.
 *   **Manual Input**: Input specific words to get detailed definitions, KK phonetics, and example sentences in English and the target language.
 *   **Contextual Learning**: Every word comes with a definition and bilingual example sentences.
 
+### 🖥️ Flexible Workspace
+*   **Resizable Panels**: Drag the dividers to adjust the width of the "Setup Studio" and "Results" panels to your liking.
+*   **Collapsible Drawers**: maximize your canvas area by collapsing the side panels with a single click.
+*   **Responsive Design**: Optimized UI that adapts intelligently to different panel widths.
+
 ### 🎨 AI Image Studio
 *   **Auto-Generation**: Automatically generates "Soft watercolor and ink" style illustrations for every vocabulary word using **Gemini 2.5 Flash Image**.
 *   **Magic Editor**: Use natural language prompts to edit existing images (e.g., "Add a party hat", "Make it snowy").
@@ -19,7 +24,10 @@ Powered by **Google Gemini 2.5 Flash** and **Gemini 3 Preview**.
 ### 🛠️ Customization & Export
 *   **Smart Layouts**: Toggle between text overlays, definitions, and sentences on the cards.
 *   **Collage Stitching**: Stitch your grid layout into a single high-resolution PNG for download.
-*   **Divider Customization**: Add dashed, dotted, or solid lines to your collages with custom colors.
+*   **Enhanced Styling Settings**:
+    *   **Line Styles**: Choose from Solid, Dashed, Dotted, Double, or Groove styles for your collage dividers.
+    *   **Modern Color Picker**: Select from curated presets or use the rainbow gradient picker for any color.
+    *   **Visual Controls**: Adjust line thickness with visual feedback.
 
 ## 🚀 Tech Stack
 

@@ -1,84 +1,132 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { VocabList } from './components/VocabList';
-import { Editor } from './components/Editor';
-import { InputPanel } from './components/InputPanel';
-import { VocabItem, VocabGenerationParams, AppMode, Character, CHARACTERS } from './types';
-import { Sparkles, Menu, X, Settings, PawPrint, Image, BookType } from 'lucide-react';
-import { generateVocabList } from './services/geminiService';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { VocabList } from './components/VocabList.tsx';
+import { Editor } from './components/Editor.tsx';
+import { InputPanel } from './components/InputPanel.tsx';
+import { LoginPage } from './components/LoginPage.tsx';
+import { ProtectedRoute } from './components/ProtectedRoute.tsx';
+import { VocabItem, VocabGenerationParams, AppMode, Character, CHARACTERS } from './types.ts';
+import { Sparkles, Menu, X, Settings, Image, BookType, LogOut, ChevronLeft, ChevronRight } from 'lucide-react';
+import { generateVocabList } from './services/geminiService.ts';
 
-const App: React.FC = () => {
-  const [appMode, setAppMode] = useState<AppMode>('vocab');
-  const [vocabItems, setVocabItems] = useState<VocabItem[]>([]);
-  const [selectedItem, setSelectedItem] = useState<VocabItem | null>(null);
-  const [themeSentence, setThemeSentence] = useState<string>("");
-  const [selectedCharacter, setSelectedCharacter] = useState<Character>(CHARACTERS[0]);
+// --- Dashboard Component (Main Application) ---
+const STORAGE_KEYS = {
+    vocabItems: 'vocabByPaw_vocabItems',
+    themeSentence: 'vocabByPaw_themeSentence',
+    selectedCharacter: 'vocabByPaw_selectedCharacter',
+    vocabLayoutId: 'vocabByPaw_vocabLayoutId',
+    vocabGridAssignments: 'vocabByPaw_vocabGridAssignments',
+    imageCache: 'vocabByPaw_imageCache',
+    collageLayoutId: 'vocabByPaw_collageLayoutId',
+    collageGridAssignments: 'vocabByPaw_collageGridAssignments',
+};
+
+// Helper to safely parse JSON from localStorage
+const loadFromStorage = <T,>(key: string, defaultValue: T): T => {
+    try {
+        const stored = localStorage.getItem(key);
+        return stored ? JSON.parse(stored) : defaultValue;
+    } catch {
+        return defaultValue;
+    }
+};
+
+const Dashboard: React.FC = () => {
+    const navigate = useNavigate();
+    const [appMode, setAppMode] = useState<AppMode>('vocab');
   
-  // Vocab Studio State
-  const [vocabLayoutId, setVocabLayoutId] = useState(0);
-  const [vocabGridAssignments, setVocabGridAssignments] = useState<number[]>([]);
+    // Load initial state from localStorage
+    const [vocabItems, setVocabItems] = useState<VocabItem[]>(() =>
+        loadFromStorage(STORAGE_KEYS.vocabItems, [])
+    );
+    const [selectedItem, setSelectedItem] = useState<VocabItem | null>(() => {
+        const items = loadFromStorage<VocabItem[]>(STORAGE_KEYS.vocabItems, []);
+        return items.length > 0 ? items[0] : null;
+    });
+    const [themeSentence, setThemeSentence] = useState<string>(() =>
+        loadFromStorage(STORAGE_KEYS.themeSentence, "")
+    );
+    const [selectedCharacter, setSelectedCharacter] = useState<Character>(() => {
+        const saved = loadFromStorage<Character | null>(STORAGE_KEYS.selectedCharacter, null);
+        return saved || CHARACTERS[0];
+    });
+
+    const handleLogout = () => {
+        // Clear all app data from localStorage
+        Object.values(STORAGE_KEYS).forEach(key => localStorage.removeItem(key));
+        localStorage.removeItem('isAuthenticated');
+        navigate('/');
+    };
+
+    const [vocabLayoutId, setVocabLayoutId] = useState(() =>
+        loadFromStorage(STORAGE_KEYS.vocabLayoutId, 0)
+    );
+    const [vocabGridAssignments, setVocabGridAssignments] = useState<number[]>(() =>
+        loadFromStorage(STORAGE_KEYS.vocabGridAssignments, [])
+    );
   const [vocabActiveCellIndex, setVocabActiveCellIndex] = useState(0);
 
-  // Collage Mode State
-  const [collageLayoutId, setCollageLayoutId] = useState(0);
-  const [collageGridAssignments, setCollageGridAssignments] = useState<number[]>([0]);
+    const [collageLayoutId, setCollageLayoutId] = useState(() =>
+        loadFromStorage(STORAGE_KEYS.collageLayoutId, 0)
+    );
+    const [collageGridAssignments, setCollageGridAssignments] = useState<number[]>(() =>
+        loadFromStorage(STORAGE_KEYS.collageGridAssignments, [0])
+    );
   const [collageActiveCellIndex, setCollageActiveCellIndex] = useState(0);
 
-  // Sync image data for export
-  const [imageCache, setImageCache] = useState<Record<number, string>>({});
+    const [imageCache, setImageCache] = useState<Record<number, string>>(() =>
+        loadFromStorage(STORAGE_KEYS.imageCache, {})
+    );
   const [stitchedImage, setStitchedImage] = useState<string | null>(null);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showInputPanel, setShowInputPanel] = useState(true);
+    const [showResultsPanel, setShowResultsPanel] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [viewMode, setViewMode] = useState<'input' | 'list'>('list');
 
   const [inputPanelWidth, setInputPanelWidth] = useState(250);
   const [resultsPanelWidth, setResultsPanelWidth] = useState(300);
   const [isResizing, setIsResizing] = useState(false);
-  
-  const resizingState = useRef<'input' | 'results' | null>(null);
-  const widthsRef = useRef({ input: 250, results: 300 });
-  const showInputPanelRef = useRef(showInputPanel);
+
+    const widthsRef = useRef({ input: 250, results: 300 });
 
   useEffect(() => {
       widthsRef.current = { input: inputPanelWidth, results: resultsPanelWidth };
   }, [inputPanelWidth, resultsPanelWidth]);
 
-  useEffect(() => {
-      showInputPanelRef.current = showInputPanel;
-  }, [showInputPanel]);
+    // Save vocab data to localStorage whenever it changes
+    useEffect(() => {
+        localStorage.setItem(STORAGE_KEYS.vocabItems, JSON.stringify(vocabItems));
+    }, [vocabItems]);
 
-  useEffect(() => {
-      const handleMouseMove = (e: MouseEvent) => {
-          if (!resizingState.current) return;
-          e.preventDefault();
-          if (!isResizing) setIsResizing(true);
-          if (resizingState.current === 'input') {
-              const newWidth = Math.max(250, Math.min(600, e.clientX));
-              setInputPanelWidth(newWidth);
-              document.body.style.cursor = 'col-resize';
-          } else if (resizingState.current === 'results') {
-              const inputWidth = showInputPanelRef.current ? widthsRef.current.input : 0;
-              const newWidth = Math.max(300, Math.min(600, e.clientX - inputWidth));
-              setResultsPanelWidth(newWidth);
-              document.body.style.cursor = 'col-resize';
-          }
-      };
-      const handleMouseUp = () => {
-          if (resizingState.current) {
-              resizingState.current = null;
-              setIsResizing(false);
-              document.body.style.cursor = 'default';
-          }
-      };
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-      return () => {
-          window.removeEventListener('mousemove', handleMouseMove);
-          window.removeEventListener('mouseup', handleMouseUp);
-      };
-  }, [isResizing]);
+    useEffect(() => {
+        localStorage.setItem(STORAGE_KEYS.themeSentence, JSON.stringify(themeSentence));
+    }, [themeSentence]);
+
+    useEffect(() => {
+        localStorage.setItem(STORAGE_KEYS.selectedCharacter, JSON.stringify(selectedCharacter));
+    }, [selectedCharacter]);
+
+    useEffect(() => {
+        localStorage.setItem(STORAGE_KEYS.vocabLayoutId, JSON.stringify(vocabLayoutId));
+    }, [vocabLayoutId]);
+
+    useEffect(() => {
+        localStorage.setItem(STORAGE_KEYS.vocabGridAssignments, JSON.stringify(vocabGridAssignments));
+    }, [vocabGridAssignments]);
+
+    useEffect(() => {
+        localStorage.setItem(STORAGE_KEYS.imageCache, JSON.stringify(imageCache));
+    }, [imageCache]);
+
+    useEffect(() => {
+        localStorage.setItem(STORAGE_KEYS.collageLayoutId, JSON.stringify(collageLayoutId));
+    }, [collageLayoutId]);
+
+    useEffect(() => {
+        localStorage.setItem(STORAGE_KEYS.collageGridAssignments, JSON.stringify(collageGridAssignments));
+    }, [collageGridAssignments]);
 
   const handleGenerateList = async (params: VocabGenerationParams) => {
       setIsGenerating(true);
@@ -112,7 +160,7 @@ const App: React.FC = () => {
               if (i < vocabItems.length) {
                   newAssignments.push(vocabItems[i].id);
               } else {
-                  newAssignments.push(0); 
+                  newAssignments.push(0);
               }
           }
           setVocabGridAssignments(newAssignments);
@@ -149,7 +197,7 @@ const App: React.FC = () => {
           while (newAssignments.length <= vocabActiveCellIndex) newAssignments.push(0);
           const existingIndex = newAssignments.indexOf(item.id);
           if (existingIndex !== -1 && existingIndex !== vocabActiveCellIndex) {
-               newAssignments[existingIndex] = 0;
+              newAssignments[existingIndex] = 0;
           }
           newAssignments[vocabActiveCellIndex] = item.id;
           setVocabGridAssignments(newAssignments);
@@ -171,192 +219,280 @@ const App: React.FC = () => {
 
   return (
     <div 
-        className="flex flex-col h-screen overflow-hidden bg-orange-50"
-        style={{
-            '--input-width': `${inputPanelWidth}px`,
-            '--results-width': `${resultsPanelWidth}px`
-        } as React.CSSProperties}
+          className="flex flex-col h-screen overflow-hidden bg-orange-50"
+          style={{
+              '--input-width': `${inputPanelWidth}px`,
+              '--results-width': `${resultsPanelWidth}px`
+          } as React.CSSProperties}
     >
       <header className="bg-white border-b border-orange-200 p-2 md:p-4 flex items-center justify-between shadow-sm z-30 relative shrink-0">
         <div className="flex items-center gap-2 md:gap-4">
-            <div className="flex items-center gap-2">
-                <div className="bg-orange-500 text-white p-1.5 md:p-2 rounded-lg">
-                    <Sparkles size={20} className="md:w-6 md:h-6" />
-                </div>
-                <div className="hidden md:block">
-                    <h1 className="text-lg md:text-2xl font-bold text-gray-800 tracking-tight leading-none">Sir Isaac's</h1>
-                    <p className="text-[10px] md:text-xs text-gray-500">Vocab Studio</p>
-                </div>
-            </div>
-            
-            <div className="bg-gray-100 p-1 rounded-lg flex items-center gap-1 border border-gray-200 ml-2 md:ml-4">
-                <button
-                    onClick={() => toggleAppMode('vocab')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-bold transition-all ${
-                        appMode === 'vocab' 
-                        ? 'bg-white text-orange-600 shadow-sm ring-1 ring-black/5' 
-                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
-                    }`}
-                >
-                    <BookType size={16} />
-                    <span className="hidden sm:inline">Vocab Studio</span>
-                </button>
-                <button
-                    onClick={() => toggleAppMode('collage')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-bold transition-all ${
-                        appMode === 'collage' 
-                        ? 'bg-white text-orange-600 shadow-sm ring-1 ring-black/5' 
-                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
-                    }`}
-                >
-                    <Image size={16} />
-                    <span className="hidden sm:inline">Free Collage</span>
-                </button>
-            </div>
+                  <div className="flex items-center gap-2">
+                      <div className="bg-orange-500 text-white p-1.5 md:p-2 rounded-lg">
+                          <Sparkles size={20} className="md:w-6 md:h-6" />
+                      </div>
+                      <div className="hidden md:block">
+                          <h1 className="text-lg md:text-2xl font-bold text-gray-800 tracking-tight leading-none">Sir Isaac's</h1>
+                          <p className="text-[10px] md:text-xs text-gray-500">Vocab Studio</p>
+                      </div>
+                  </div>
 
-            {appMode === 'vocab' && (
-                <div className="hidden lg:flex items-center gap-3 ml-4">
-                     <span className="text-xs font-bold text-orange-900 uppercase tracking-wider w-24 text-right">
-                        {showInputPanel ? "Studio Open" : "Nap Mode"}
-                     </span>
-                    <button 
-                        onClick={() => setShowInputPanel(!showInputPanel)}
-                        className={`relative w-20 h-10 rounded-full shadow-inner border-2 focus:outline-none transition-all duration-300
-                        ${showInputPanel ? 'bg-orange-100 border-orange-300' : 'bg-gray-800 border-gray-900'}
-                        `}
-                        title={showInputPanel ? "Hide Setup" : "Show Setup"}
-                    >
-                        <div className="absolute inset-0 flex items-center justify-between px-2 pointer-events-none">
-                            <div className={`transition-all duration-300 transform ${showInputPanel ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
-                                 <span className="text-2xl filter drop-shadow-sm">🐱</span>
-                            </div>
-                            <div className={`transition-all duration-300 transform ${!showInputPanel ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
-                                 <span className="text-2xl">🐱</span>
-                            </div>
-                        </div>
-                        <div 
-                            className={`absolute top-1/2 -translate-y-1/2 transition-transform duration-300 ease-in-out
-                            ${showInputPanel ? 'translate-x-10' : 'translate-x-1'}
-                            `}
-                        >
-                            <div className="w-8 h-8 flex items-center justify-center bg-white rounded-full shadow-md border border-gray-200">
-                                 <PawPrint size={18} fill="currentColor" className="text-orange-900" />
-                            </div>
-                        </div>
-                    </button>
-                </div>
-            )}
+                  <div className="bg-gray-100 p-1 rounded-lg flex items-center gap-1 border border-gray-200 ml-2 md:ml-4">
+                      <button
+                          onClick={() => toggleAppMode('vocab')}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-bold transition-all ${appMode === 'vocab'
+                              ? 'bg-white text-orange-600 shadow-sm ring-1 ring-black/5'
+                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                              }`}
+                      >
+                          <BookType size={16} />
+                          <span className="hidden sm:inline">Vocab Studio</span>
+                      </button>
+                      <button
+                          onClick={() => toggleAppMode('collage')}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-bold transition-all ${appMode === 'collage'
+                              ? 'bg-white text-orange-600 shadow-sm ring-1 ring-black/5'
+                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                              }`}
+                      >
+                          <Image size={16} />
+                          <span className="hidden sm:inline">Free Collage</span>
+                      </button>
+                  </div>
         </div>
         
-        <div className="flex gap-2 lg:hidden">
-             {appMode === 'vocab' && (
-               <>
-                 <button 
-                    className={`p-2 rounded ${viewMode === 'input' ? 'bg-orange-100 text-orange-800' : 'bg-gray-100'}`}
-                    onClick={() => {
-                        setIsSidebarOpen(true);
-                        setViewMode('input');
-                    }}
+              <div className="flex items-center gap-2">
+                  <div className="flex gap-2 lg:hidden">
+                      {appMode === 'vocab' && (
+                          <>
+                              <button
+                                  className={`p-2 rounded ${viewMode === 'input' ? 'bg-orange-100 text-orange-800' : 'bg-gray-100'}`}
+                                  onClick={() => {
+                                      setIsSidebarOpen(true);
+                                      setViewMode('input');
+                                  }}
                 >
-                    <Settings size={20} />
+                                  <Settings size={20} />
                 </button>
-                 <button 
-                    className={`p-2 rounded ${viewMode === 'list' ? 'bg-orange-100 text-orange-800' : 'bg-gray-100'}`}
-                    onClick={() => {
-                        setIsSidebarOpen(true);
-                        setViewMode('list');
-                    }}
+                              <button
+                                  className={`p-2 rounded ${viewMode === 'list' ? 'bg-orange-100 text-orange-800' : 'bg-gray-100'}`}
+                                  onClick={() => {
+                                      setIsSidebarOpen(true);
+                                      setViewMode('list');
+                                  }}
                 >
-                    <Menu size={20} />
+                                  <Menu size={20} />
                 </button>
-               </>
-             )}
-        </div>
+                          </>
+                      )}
+                  </div>
+
+                  {/* Logout Button */}
+                  <button
+                      onClick={handleLogout}
+                      className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                      title="Logout"
+                  >
+                      <LogOut size={20} />
+                  </button>
+              </div>
       </header>
 
       <main className="flex flex-1 overflow-hidden relative">
         {appMode === 'vocab' && (
-            <div className={`
-                absolute lg:relative z-50 h-full bg-white shadow-xl lg:shadow-none border-r border-orange-200 
-                ${!isResizing ? 'transition-all duration-300 ease-in-out' : ''}
+                  <>
+                      {/* Setup Studio Drawer Toggle */}
+                      <button
+                          onClick={() => setShowInputPanel(!showInputPanel)}
+                          className="hidden lg:flex absolute left-0 top-1/2 -translate-y-1/2 z-[60] bg-orange-500 hover:bg-orange-600 text-white p-1 rounded-r-lg shadow-lg transition-all duration-300"
+                          style={{ left: showInputPanel ? inputPanelWidth - 1 : 0 }}
+                          title={showInputPanel ? 'Hide Setup Studio' : 'Show Setup Studio'}
+                      >
+                          {showInputPanel ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+                      </button>
+
+                      <div
+                          className={`
+                absolute lg:relative z-50 h-full bg-white shadow-xl lg:shadow-none border-r border-orange-200 transition-all duration-300 ease-in-out
                 ${isSidebarOpen && viewMode === 'input' ? 'translate-x-0 w-full' : '-translate-x-full lg:translate-x-0'}
-                ${showInputPanel ? 'lg:w-[var(--input-width)] lg:opacity-100' : 'lg:w-0 lg:opacity-0 lg:overflow-hidden lg:border-none'}
-            `}>
-                <div className="h-full relative overflow-hidden w-full flex">
-                    <button 
-                        onClick={() => setIsSidebarOpen(false)}
-                        className="absolute top-2 right-2 lg:hidden p-2 text-gray-500 z-10"
-                    >
-                        <X size={20} />
-                    </button>
-                    <div className="h-full w-full lg:w-[var(--input-width)] overflow-hidden"> 
-                        <InputPanel onGenerate={handleGenerateList} isLoading={isGenerating} />
-                    </div>
-                    {showInputPanel && (
-                        <div 
-                            onMouseDown={() => resizingState.current = 'input'}
-                            className="hidden lg:flex absolute top-0 right-0 h-full w-4 cursor-col-resize z-50 hover:bg-orange-400/20 active:bg-orange-400/50 items-center justify-center -mr-2 transition-colors group"
-                        >
-                            <div className="w-1 h-8 bg-gray-300 rounded-full group-hover:bg-orange-400" />
-                        </div>
-                    )}
-                </div>
-            </div>
+              `}
+                          style={{
+                              width: showInputPanel ? inputPanelWidth : 0,
+                              minWidth: showInputPanel ? 180 : 0,
+                              opacity: showInputPanel ? 1 : 0,
+                              overflow: showInputPanel ? 'visible' : 'hidden'
+                          }}
+                      >
+                          <div className="h-full relative overflow-hidden w-full flex">
+                              <button
+                                  onClick={() => setIsSidebarOpen(false)}
+                                  className="absolute top-2 right-2 lg:hidden p-2 text-gray-500 z-10"
+                              >
+                                  <X size={20} />
+                              </button>
+                              <div className="h-full w-full overflow-hidden">
+                                  <InputPanel onGenerate={handleGenerateList} isLoading={isGenerating} />
+                              </div>
+                          </div>
+                      </div>
+
+                      {/* Resize handle between InputPanel and VocabList */}
+                      {showInputPanel && (
+                          <div
+                              className="hidden lg:flex w-1.5 bg-gray-100 hover:bg-orange-300 cursor-col-resize items-center justify-center group transition-colors z-50"
+                              onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  setIsResizing(true);
+                                  const startX = e.clientX;
+                                  const startWidth = inputPanelWidth;
+
+                                  const onMouseMove = (e: MouseEvent) => {
+                                      const delta = e.clientX - startX;
+                                      const newWidth = Math.max(180, Math.min(400, startWidth + delta));
+                                      setInputPanelWidth(newWidth);
+                                  };
+
+                                  const onMouseUp = () => {
+                                      setIsResizing(false);
+                                      document.removeEventListener('mousemove', onMouseMove);
+                                      document.removeEventListener('mouseup', onMouseUp);
+                                  };
+
+                                  document.addEventListener('mousemove', onMouseMove);
+                                  document.addEventListener('mouseup', onMouseUp);
+                              }}
+                          >
+                              <div className="w-0.5 h-8 bg-gray-300 group-hover:bg-orange-500 rounded transition-colors" />
+                          </div>
+                      )}
+                  </>
         )}
 
         {appMode === 'vocab' && (
-            <div className={`
-                absolute lg:relative z-50 h-full w-full lg:w-[var(--results-width)] bg-white shadow-xl lg:shadow-none border-r border-orange-200
-                ${!isResizing ? 'transition-transform duration-300' : ''}
+                  <>
+                      <div
+                          className={`
+                absolute lg:relative z-50 h-full bg-white shadow-xl lg:shadow-none border-r border-orange-200 transition-all duration-300 ease-in-out
                 ${isSidebarOpen && viewMode === 'list' ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} 
-            `}>
-                <div className="h-full relative flex">
-                    <div className="h-full w-full overflow-hidden">
-                        <VocabList 
-                            items={vocabItems}
-                            themeSentence={themeSentence}
-                            onThemeChange={setThemeSentence}
-                            selectedId={selectedItem?.id || null} 
-                            onSelect={handleVocabSelect} 
-                            layoutId={vocabLayoutId}
-                            gridAssignments={vocabGridAssignments}
-                            activeCellIndex={vocabActiveCellIndex}
-                            onUnselectAll={handleUnselectAll}
-                            onClose={() => setIsSidebarOpen(false)}
-                            imageCache={imageCache}
-                            stitchedImage={stitchedImage}
-                        />
-                    </div>
-                    <div 
-                        onMouseDown={() => resizingState.current = 'results'}
-                        className="hidden lg:flex absolute top-0 right-0 h-full w-4 cursor-col-resize z-50 hover:bg-orange-400/20 active:bg-orange-400/50 items-center justify-center -mr-2 transition-colors group"
-                    >
-                        <div className="w-1 h-8 bg-gray-300 rounded-full group-hover:bg-orange-400" />
-                    </div>
-                </div>
-            </div>
+              `}
+                          style={{
+                              width: showResultsPanel ? resultsPanelWidth : 0,
+                              minWidth: showResultsPanel ? 180 : 0,
+                              opacity: showResultsPanel ? 1 : 0,
+                              overflow: showResultsPanel ? 'visible' : 'hidden'
+                          }}
+                      >
+                          <div className="h-full relative flex">
+                              <div className="h-full w-full overflow-hidden">
+                                  <VocabList
+                                      items={vocabItems}
+                                      themeSentence={themeSentence}
+                                      onThemeChange={setThemeSentence}
+                                      selectedId={selectedItem?.id || null}
+                                      onSelect={handleVocabSelect}
+                                      layoutId={vocabLayoutId}
+                                      gridAssignments={vocabGridAssignments}
+                                      activeCellIndex={vocabActiveCellIndex}
+                                      onUnselectAll={handleUnselectAll}
+                                      onClose={() => setIsSidebarOpen(false)}
+                                      imageCache={imageCache}
+                                      stitchedImage={stitchedImage}
+                                      selectedCharacter={selectedCharacter}
+                                      onCharacterChange={setSelectedCharacter}
+                                  />
+                              </div>
+                          </div>
+                      </div>
+
+                      {/* Resize handle between VocabList and Editor */}
+                      {showResultsPanel && (
+                          <div
+                              className="hidden lg:flex w-1.5 bg-gray-100 hover:bg-orange-300 cursor-col-resize items-center justify-center group transition-colors z-50"
+                              onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  setIsResizing(true);
+                                  const startX = e.clientX;
+                                  const startWidth = resultsPanelWidth;
+
+                                  const onMouseMove = (e: MouseEvent) => {
+                                      const delta = e.clientX - startX;
+                                      const newWidth = Math.max(180, Math.min(500, startWidth + delta));
+                                      setResultsPanelWidth(newWidth);
+                                  };
+
+                                  const onMouseUp = () => {
+                                      setIsResizing(false);
+                                      document.removeEventListener('mousemove', onMouseMove);
+                                      document.removeEventListener('mouseup', onMouseUp);
+                                  };
+
+                                  document.addEventListener('mousemove', onMouseMove);
+                                  document.addEventListener('mouseup', onMouseUp);
+                              }}
+                          >
+                              <div className="w-0.5 h-8 bg-gray-300 group-hover:bg-orange-500 rounded transition-colors" />
+                          </div>
+                      )}
+
+                      {/* Results Drawer Toggle */}
+                      <button
+                          onClick={() => setShowResultsPanel(!showResultsPanel)}
+                          className="hidden lg:flex absolute top-1/2 -translate-y-1/2 z-[60] bg-orange-500 hover:bg-orange-600 text-white p-1 rounded-r-lg shadow-lg transition-all duration-300"
+                          style={{
+                              left: (showInputPanel ? inputPanelWidth + 6 : 0) + (showResultsPanel ? resultsPanelWidth + 6 : 0) - 1
+                          }}
+                          title={showResultsPanel ? 'Hide Results' : 'Show Results'}
+                      >
+                          {showResultsPanel ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+                      </button>
+                  </>
         )}
 
-        <div className="flex-1 bg-pattern relative w-full h-full overflow-hidden">
-           <Editor 
-                selectedItem={appMode === 'vocab' ? selectedItem : null} 
-                vocabItems={vocabItems}
-                layoutId={currentLayoutId}
-                onLayoutChange={handleLayoutChange}
-                gridAssignments={currentGridAssignments}
-                onGridUpdate={handleGridUpdate}
-                activeCellIndex={currentActiveCellIndex}
-                onActiveCellChange={setActiveCellIndex}
-                appMode={appMode}
-                onImageCacheChange={setImageCache}
-                onStitchedImageChange={setStitchedImage}
-                selectedCharacter={selectedCharacter}
-                onCharacterChange={setSelectedCharacter}
-           />
+              <div
+                  className="flex-1 relative w-full h-full overflow-hidden"
+                  style={{
+                      backgroundColor: '#fff9f5',
+                      backgroundImage: `
+              linear-gradient(to right, rgba(251, 146, 60, 0.15) 1px, transparent 1px),
+              linear-gradient(to bottom, rgba(251, 146, 60, 0.15) 1px, transparent 1px)
+            `,
+                      backgroundSize: '24px 24px'
+                  }}
+              >
+                  <Editor
+                      selectedItem={appMode === 'vocab' ? selectedItem : null}
+                      vocabItems={vocabItems}
+                      layoutId={currentLayoutId}
+                      onLayoutChange={handleLayoutChange}
+                      gridAssignments={currentGridAssignments}
+                      onGridUpdate={handleGridUpdate}
+                      activeCellIndex={currentActiveCellIndex}
+                      onActiveCellChange={setActiveCellIndex}
+                      appMode={appMode}
+                      initialImageCache={imageCache}
+                      onImageCacheChange={setImageCache}
+                      onStitchedImageChange={setStitchedImage}
+                      selectedCharacter={selectedCharacter}
+                      onCharacterChange={setSelectedCharacter}
+                  />
         </div>
       </main>
     </div>
   );
+};
+
+const App: React.FC = () => {
+    return (
+        <BrowserRouter>
+            <Routes>
+                <Route path="/" element={<LoginPage />} />
+                <Route element={<ProtectedRoute />}>
+                    <Route path="/dashboard" element={<Dashboard />} />
+                </Route>
+                <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+        </BrowserRouter>
+    );
 };
 
 export default App;
