@@ -6,6 +6,18 @@
 
 Powered by **Google Gemini 2.5 Flash** for text and **Gemini 2.5 Flash Image** for illustrations.
 
+## 📸 Screenshots
+
+### Homepage
+![Homepage](docs/images/homepage.png)
+
+### Dashboard - Vocab Studio
+![Dashboard](docs/images/dashboard.png)
+
+### Create Word Images
+![Create Word Images](docs/images/createWordImages.png)
+
+
 ## ✨ Features
 
 ### 🧠 AI Vocabulary Generation
