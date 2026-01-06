@@ -75,7 +75,9 @@ Powered by **Google Gemini 2.5 Flash** for text and **Gemini 2.5 Flash Image** f
 3. **Configure Environment Variables**
    Create a `.env` file in the root directory:
    ```env
-   VITE_GEMINI_API_KEY=your_actual_api_key_here
+   GEMINI_API_KEY=your_actual_api_key_here
+   VITE_USER=your_user_name
+   VITE_PASS=your_password
    ```
 
 4. **Run the application**

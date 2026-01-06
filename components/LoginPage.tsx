@@ -64,7 +64,7 @@ export const LoginPage: React.FC = () => {
           <motion.img
             src="https://github.com/akirap3/OrangeCatEnglishDiary/blob/main/images/vocabByPaw/group/togethte_rmbg.png?raw=true"
             alt="Vocab By Paw Characters"
-            className="w-[320px] md:w-[450px] lg:w-[550px] h-auto drop-shadow-2xl"
+            className="w-[95vw] sm:max-w-[480px] md:max-w-[550px] lg:max-w-[650px] xl:max-w-[750px] h-auto drop-shadow-2xl"
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 1, ease: 'easeOut' }}
