@@ -2,92 +2,109 @@
 
 **Sir Isaac's Vocab Studio** is a creative, AI-powered vocabulary learning tool designed to make studying new words visually engaging and fun. Guided by "Sir Isaac" (a chubby orange tabby cat), users can generate vocabulary lists based on topics, create whimsical watercolor illustrations for each word, and arrange them into beautiful study cards or collages.
 
-Powered by **Google Gemini 2.5 Flash** and **Gemini 3 Preview**.
+🔗 **Live Demo**: [https://vocab-by-paw.vercel.app](https://vocab-by-paw.vercel.app)
+
+Powered by **Google Gemini 2.5 Flash** for text and **Gemini 2.5 Flash Image** for illustrations.
 
 ## ✨ Features
 
 ### 🧠 AI Vocabulary Generation
-*   **Topic-Based Generation**: Enter a theme (e.g., "Space Exploration", "Cooking") and select proficiency levels (A1-C2, TOEIC, etc.) to generate a curated list of words.
-*   **Manual Input**: Input specific words to get detailed definitions, KK phonetics, and example sentences in English and the target language.
-*   **Contextual Learning**: Every word comes with a definition and bilingual example sentences.
+- **Topic-Based Generation**: Enter a theme (e.g., "Space Exploration", "Cooking") and select proficiency levels (A1-C2, TOEIC, etc.) to generate a curated list of words.
+- **Manual Input**: Input specific words to get detailed definitions, KK phonetics, and example sentences.
+- **Contextual Learning**: Every word comes with a definition and bilingual example sentences.
 
 ### 🖥️ Flexible Workspace
-*   **Resizable Panels**: Drag the dividers to adjust the width of the "Setup Studio" and "Results" panels to your liking.
-*   **Collapsible Drawers**: maximize your canvas area by collapsing the side panels with a single click.
-*   **Responsive Design**: Optimized UI that adapts intelligently to different panel widths.
+- **Resizable Panels**: Drag dividers to adjust panel widths.
+- **Collapsible Drawers**: Maximize canvas area by collapsing side panels.
+- **Mode Persistence**: Your last used mode (Vocab Studio / Free Collage) is remembered on reload.
+- **Responsive Design**: Optimized UI for different screen sizes.
 
 ### 🎨 AI Image Studio
-*   **Auto-Generation**: Automatically generates "Soft watercolor and ink" style illustrations for every vocabulary word using **Gemini 2.5 Flash Image**.
-*   **Magic Editor**: Use natural language prompts to edit existing images (e.g., "Add a party hat", "Make it snowy").
-*   **Drag & Drop Grid**: Arrange your cards in various layouts (Single, Split, Grid 4, Grid 9, Focus views).
+- **Auto-Generation**: "Soft watercolor and ink" style illustrations using Gemini 2.5 Flash Image.
+- **Magic Editor**: Use natural language prompts to edit images (e.g., "Add a party hat").
+- **Upload Support**: Upload your own images alongside AI-generated ones.
+- **Drag & Drop Grid**: Arrange cards in various layouts (Single, Split, Grid 4, Grid 9, Focus views).
+
+### 🎆 Free Collage Mode
+- **Creative Freedom**: Build custom collages without vocabulary constraints.
+- **Image Persistence**: All uploaded/generated images are cached in IndexedDB and restored on reload.
+
+### 💾 Smart Caching
+- **IndexedDB Storage**: Images are cached locally with larger capacity than localStorage (~50MB+).
+- **Persistent State**: Vocabulary lists, grid layouts, and images persist across browser sessions.
+- **Clean Logout**: All cached data is cleared on logout.
 
 ### 🛠️ Customization & Export
-*   **Smart Layouts**: Toggle between text overlays, definitions, and sentences on the cards.
-*   **Collage Stitching**: Stitch your grid layout into a single high-resolution PNG for download.
-*   **Enhanced Styling Settings**:
-    *   **Line Styles**: Choose from Solid, Dashed, Dotted, Double, or Groove styles for your collage dividers.
-    *   **Modern Color Picker**: Select from curated presets or use the rainbow gradient picker for any color.
-    *   **Visual Controls**: Adjust line thickness with visual feedback.
+- **Smart Layouts**: Toggle text overlays, definitions, and sentences on cards.
+- **Collage Stitching**: Stitch grid layouts into a single high-resolution PNG.
+- **Line Styles**: Solid, Dashed, Dotted, Double, or Groove dividers.
+- **Modern Color Picker**: Curated presets or rainbow gradient picker.
+- **PDF Export**: Export vocabulary with images as a formatted PDF document.
 
 ## 🚀 Tech Stack
 
-*   **Frontend**: React 19, TypeScript
-*   **Styling**: Tailwind CSS
-*   **AI Integration**: Google GenAI SDK (`@google/genai`)
-*   **Icons**: Lucide React
-*   **Font**: Comic Neue & Noto Sans TC
+- **Frontend**: React 19, TypeScript, Vite
+- **Styling**: Tailwind CSS
+- **AI Integration**: Google GenAI SDK (`@google/genai`)
+- **Storage**: IndexedDB for image caching
+- **Routing**: React Router v6
+- **Icons**: Lucide React
+- **Font**: Comic Neue & Noto Sans TC
+- **Deployment**: Vercel
 
 ## 🛠️ Getting Started
 
 ### Prerequisites
-*   Node.js (v18 or higher recommended)
-*   A Google Cloud Project with the **Gemini API** enabled.
-*   An API Key from [Google AI Studio](https://aistudio.google.com/).
+- Node.js (v18 or higher recommended)
+- A Google Cloud Project with the **Gemini API** enabled
+- An API Key from [Google AI Studio](https://aistudio.google.com/)
 
 ### Installation
 
-1.  **Clone the repository**
-    ```bash
-    git clone https://github.com/your-username/sir-isaacs-vocab-studio.git
-    cd sir-isaacs-vocab-studio
-    ```
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/AkiraP3/VocabByPaw.git
+   cd VocabByPaw
+   ```
 
-2.  **Install dependencies**
-    ```bash
-    npm install
-    # or
-    yarn install
-    ```
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-3.  **Configure Environment Variables**
-    Create a `.env` file in the root directory and add your Google Gemini API Key:
-    
-    ```env
-    API_KEY=your_actual_api_key_here
-    ```
-    
-    > **Note**: The application uses `process.env.API_KEY`. Ensure your build tool (Webpack/Vite/Parcel) supports environment variable injection.
+3. **Configure Environment Variables**
+   Create a `.env` file in the root directory:
+   ```env
+   VITE_GEMINI_API_KEY=your_actual_api_key_here
+   ```
 
-4.  **Run the application**
-    ```bash
-    npm start
-    ```
+4. **Run the application**
+   ```bash
+   npm run dev
+   ```
+
+5. **Build for production**
+   ```bash
+   npm run build
+   ```
 
 ## 📖 Usage
 
-1.  **Setup Panel**: Open the left panel (click the "Nap Mode/Studio Open" toggle on desktop).
-2.  **Generate Words**: Choose a topic or enter manual words. Select your target language.
-3.  **Select Layout**: Use the top bar to choose a grid layout (e.g., 4-grid).
-4.  **Assign Words**: Click a box in the grid, then select a word from the generated list on the left.
-5.  **Generate Images**: Click "Generate" on the grid cell to create an AI illustration.
-6.  **Export**: Click "Stitch & Download Collage" at the bottom to save your creation.
+1. **Login**: Enter your credentials on the login page.
+2. **Setup Panel**: Use the left panel to generate vocabulary words.
+3. **Generate Words**: Choose a topic or enter manual words with target language.
+4. **Select Layout**: Use the layout selector for different grid arrangements.
+5. **Assign Words**: Click grid cells and select words from the list.
+6. **Generate Images**: Click "Generate" on cells to create AI illustrations.
+7. **Upload Images**: Alternatively, upload your own images.
+8. **Export**: Stitch and download as PNG, or export as PDF.
 
 ## 🔒 Security Note
 
-This project uses the API Key on the client-side (frontend). 
-*   **For Development**: Using `.env` is fine.
-*   **For Production**: It is highly recommended to set up **HTTP Referrer restrictions** on your API Key in the Google Cloud Console to prevent unauthorized usage if you deploy this to a public URL.
+This project uses the API Key on the client-side.
+- **For Development**: Using `.env` is fine.
+- **For Production**: Set up **HTTP Referrer restrictions** on your API Key in Google Cloud Console.
 
 ## 📄 License
 
-This project is open source.
+This project is open source under the MIT License.
