@@ -535,6 +535,12 @@ const Dashboard: React.FC = () => {
   );
 };
 
+// Redirect component that checks auth status
+const CatchAllRedirect: React.FC = () => {
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    return <Navigate to={isAuthenticated ? '/dashboard' : '/'} replace />;
+};
+
 const App: React.FC = () => {
     return (
         <BrowserRouter>
@@ -543,7 +549,7 @@ const App: React.FC = () => {
                 <Route element={<ProtectedRoute />}>
                     <Route path="/dashboard" element={<Dashboard />} />
                 </Route>
-                <Route path="*" element={<Navigate to="/" replace />} />
+                <Route path="*" element={<CatchAllRedirect />} />
             </Routes>
         </BrowserRouter>
     );
