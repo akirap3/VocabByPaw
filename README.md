@@ -62,12 +62,12 @@ Powered by **Google Gemini 2.5 Flash** for text and **Gemini 2.5 Flash Image** f
 - **Routing**: React Router v6
 - **Icons**: Lucide React
 - **Font**: Comic Neue & Noto Sans TC
-- **Deployment**: Vercel
+- **Deployment**: Vercel / Docker
 
 ## 🛠️ Getting Started
 
 ### Prerequisites
-- Node.js (v18 or higher recommended)
+- Node.js (v18 or higher recommended) OR Docker
 - A Google Cloud Project with the **Gemini API** enabled
 - An API Key from [Google AI Studio](https://aistudio.google.com/)
 
@@ -79,28 +79,84 @@ Powered by **Google Gemini 2.5 Flash** for text and **Gemini 2.5 Flash Image** f
    cd VocabByPaw
    ```
 
-2. **Install dependencies**
+2. **Configure Environment Variables**
    ```bash
-   npm install
+   cp .env.example .env
+   # Edit .env with your actual values
    ```
 
-3. **Configure Environment Variables**
-   Create a `.env` file in the root directory:
-   ```env
-   GEMINI_API_KEY=your_actual_api_key_here
-   VITE_USER=your_user_name
-   VITE_PASS=your_password
-   ```
+### Option A: Run with npm
 
-4. **Run the application**
-   ```bash
-   npm run dev
-   ```
+```bash
+npm install
+npm run dev
+```
 
-5. **Build for production**
-   ```bash
-   npm run build
+Access at `http://localhost:3000`
+
+### Option B: Run with Docker
+
+```bash
+docker-compose up -d
+```
+
+Access at `http://localhost:8080`
+
+```bash
+# View logs
+docker-compose logs -f
+
+# Stop
+docker-compose down
+```
+
+## 🚀 Deployment
+
+### Vercel (Recommended)
+
+1. Push to GitHub
+2. Import project in [Vercel Dashboard](https://vercel.com)
+3. Add environment variables in **Settings → Environment Variables**:
    ```
+   VITE_GEMINI_API_KEY = your_api_key
+   VITE_USER = your_username
+   VITE_PASS = your_password
+   ```
+4. Deploy automatically on every push
+
+### Docker
+
+Build and run with runtime environment injection (secrets not baked into image):
+
+```bash
+# Build image
+docker build -t vocabbypaw .
+
+# Run container
+docker run -d -p 8080:80 \
+  -e GEMINI_API_KEY=your_api_key \
+  -e VITE_USER=your_username \
+  -e VITE_PASS=your_password \
+  vocabbypaw
+```
+
+Or use Docker Compose:
+
+```yaml
+# docker-compose.yml
+version: '3.8'
+services:
+  vocabbypaw:
+    build: .
+    ports:
+      - "8080:80"
+    env_file:
+      - .env
+```
+
+```bash
+docker-compose up -d
+```
 
 ## 📖 Usage
 
@@ -115,10 +171,12 @@ Powered by **Google Gemini 2.5 Flash** for text and **Gemini 2.5 Flash Image** f
 
 ## 🔒 Security Note
 
-This project uses the API Key on the client-side.
-- **For Development**: Using `.env` is fine.
-- **For Production**: Set up **HTTP Referrer restrictions** on your API Key in Google Cloud Console.
+- **Local Development**: Using `.env` is fine.
+- **Vercel**: Environment variables are injected at build time.
+- **Docker**: Secrets are injected at runtime (not baked into image).
+- **API Key Protection**: Set up **HTTP Referrer restrictions** on your API Key in Google Cloud Console.
 
 ## 📄 License
 
 This project is open source under the MIT License.
+

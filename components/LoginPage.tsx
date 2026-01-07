@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { SpaceBackground } from './SpaceBackground.tsx';
 import { Rocket, Sparkles, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { env } from '../src/env.ts';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -22,8 +23,8 @@ export const LoginPage: React.FC = () => {
     e.preventDefault();
     setError('');
 
-    const validUser = import.meta.env.VITE_USER;
-    const validPass = import.meta.env.VITE_PASS;
+    const validUser = env.VITE_USER;
+    const validPass = env.VITE_PASS;
 
     if (username === validUser && password === validPass) {
       setIsLaunching(true);

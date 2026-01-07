@@ -1,11 +1,12 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { VocabGenerationParams, VocabItem } from "../types.ts";
+import { env } from "../src/env.ts";
 
 // Initialize lazily and check for API key
 const getAI = () => {
-  const apiKey = process.env.API_KEY;
+  const apiKey = env.GEMINI_API_KEY;
   if (!apiKey) {
-    console.warn("Gemini API Key is missing from process.env.API_KEY. API calls will fail.");
+    console.warn("Gemini API Key is missing. API calls will fail.");
   }
   return new GoogleGenAI({ apiKey: apiKey || "" });
 };
